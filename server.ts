@@ -62,14 +62,14 @@ app.get('/api/church-settings', async (req, res) => {
     if (!settings) {
       return res.json({
         id: 1,
-        church_name: 'GracePoint Church',
-        tagline: 'International Assemblies • Stewardship & Member Records',
+        church_name: 'Living Faith Membership Portal',
+        tagline: 'Living Faith International Assemblies • Stewardship & Member Records',
         logo_url: '',
-        address: '1240 Kingdom Way, Central Cathedral Campus',
-        phone: '+1 (555) 234-5678',
-        email: 'office@gracepointchurch.org',
-        senior_pastor: 'Pastor David Sterling',
-        tax_id: 'CH-TAX-8921-EX',
+        address: 'Living Faith Cathedral Campus, Lilongwe, Malawi',
+        phone: '+265 99 123 4567',
+        email: 'office@livingfaithportal.org',
+        senior_pastor: 'Senior Pastor',
+        tax_id: '',
       });
     }
     res.json(settings);

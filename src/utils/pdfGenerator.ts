@@ -28,10 +28,10 @@ export function generateMemberStatementPDF(
   const pageWidth = doc.internal.pageSize.getWidth();
   let y = 20;
 
-  const churchName = (churchSettings?.church_name || 'GracePoint Church').toUpperCase();
-  const address = churchSettings?.address || '1240 Kingdom Way, Central Campus';
-  const phone = churchSettings?.phone || '+1 (555) 234-5678';
-  const email = churchSettings?.email || 'office@gracepointchurch.org';
+  const churchName = (churchSettings?.church_name || 'Living Faith Membership Portal').toUpperCase();
+  const address = churchSettings?.address || 'Living Faith Cathedral Campus, Lilongwe, Malawi';
+  const phone = churchSettings?.phone || '+265 99 123 4567';
+  const email = churchSettings?.email || 'office@livingfaithportal.org';
 
   // Header Background bar
   doc.setFillColor(15, 23, 42); // slate-900
@@ -268,7 +268,7 @@ export function generateMemberStatementPDF(
     y + 9.5
   );
   doc.text(
-    `Official record of active partnership and good standing at ${churchSettings?.church_name || 'GracePoint Church'}. Verified offline through treasury receipts.`,
+    `Official record of active partnership and good standing at ${churchSettings?.church_name || 'Living Faith Membership Portal'}. Verified offline through treasury receipts.`,
     18,
     y + 13.5
   );
@@ -318,9 +318,9 @@ export function buildDigitalIDCardDoc(
   const cardWidth = 105;
   const cardHeight = 65;
 
-  const churchName = (churchSettings?.church_name || 'GracePoint Church').toUpperCase();
-  const branchName = member.branch_name || member.branch_code || 'Main Sanctuary';
-  const pastor = churchSettings?.senior_pastor || 'Pastor David Sterling';
+  const churchName = (churchSettings?.church_name || 'Living Faith Membership Portal').toUpperCase();
+  const branchName = member.branch_name || member.branch_code || 'Lilongwe Branch (Malawi)';
+  const pastor = churchSettings?.senior_pastor || 'Senior Pastor';
 
   // Card Background
   doc.setFillColor(15, 23, 42); // slate-900

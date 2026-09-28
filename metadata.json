@@ -1,6 +1,6 @@
 {
-  "name": "GracePoint Church Portal",
-  "description": "Church membership management, tithe tracking, monthly dues, Kingdom Investment, and attendance portal with instant member verification and financial reporting.",
+  "name": "Living Faith Membership Portal",
+  "description": "Church membership management, monthly dues, Kingdom Investment, and member verification portal for Living Faith branches.",
   "requestFramePermissions": [],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }

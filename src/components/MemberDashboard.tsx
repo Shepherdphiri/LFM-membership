@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { MemberDashboardData, Contribution, ChurchEvent } from '../types';
+import { MemberDashboardData, Contribution } from '../types';
 import {
   FileText,
   DollarSign,
@@ -13,7 +13,6 @@ import {
   Clock,
   ShieldCheck,
   Building2,
-  Heart,
   Award,
   Bell,
   Eye,
@@ -47,7 +46,7 @@ export const MemberDashboard: React.FC<MemberDashboardProps> = ({
   const [qrDataUrl, setQrDataUrl] = useState<string>('');
   const [isDigitalIdOpen, setIsDigitalIdOpen] = useState<boolean>(false);
 
-  const churchName = settings?.church_name || 'GracePoint Church';
+  const churchName = settings?.church_name || 'Living Faith Membership Portal';
 
   // Generate scannable QR Code for the member's unique ID
   useEffect(() => {
@@ -74,12 +73,12 @@ export const MemberDashboard: React.FC<MemberDashboardProps> = ({
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-6">
       {/* Top Profile Banner */}
-      <div className="bg-slate-900 border border-slate-800 rounded-xl p-5 sm:p-6 shadow-sm">
+      <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5 sm:p-6 shadow-sm text-white">
         <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-5">
           {/* Member Identity & Quick QR */}
           <div className="flex items-start sm:items-center gap-4">
             {member.photo_url ? (
-              <div className="w-14 h-14 rounded-xl overflow-hidden border-2 border-amber-500/60 shadow shrink-0">
+              <div className="w-14 h-14 rounded-xl overflow-hidden border-2 border-amber-400 shadow shrink-0">
                 <img
                   src={member.photo_url}
                   alt={member.full_name}
@@ -87,7 +86,7 @@ export const MemberDashboard: React.FC<MemberDashboardProps> = ({
                 />
               </div>
             ) : (
-              <div className="w-14 h-14 rounded-lg bg-slate-950 border border-slate-700 flex items-center justify-center text-amber-500 font-bold text-xl shrink-0 font-mono">
+              <div className="w-14 h-14 rounded-xl bg-slate-800 border border-slate-700 flex items-center justify-center text-amber-400 font-bold text-xl shrink-0 font-mono">
                 {member.full_name
                   .split(' ')
                   .map((n) => n[0])
@@ -98,28 +97,28 @@ export const MemberDashboard: React.FC<MemberDashboardProps> = ({
 
             <div className="space-y-1">
               <div className="flex flex-wrap items-center gap-2">
-                <h2 className="text-xl sm:text-2xl font-bold text-slate-100 font-serif">
+                <h2 className="text-xl sm:text-2xl font-bold text-white font-serif">
                   {member.title ? `${member.title} ` : ''}
                   {member.full_name}
                 </h2>
 
                 {/* Standing Light Pill */}
                 <div
-                  className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded text-xs font-semibold uppercase tracking-wider ${
+                  className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded text-xs font-bold uppercase tracking-wider ${
                     status === 'green'
-                      ? 'bg-emerald-950 border border-emerald-700 text-emerald-300'
+                      ? 'bg-emerald-800/80 border border-emerald-600 text-emerald-100'
                       : status === 'orange'
-                      ? 'bg-amber-950 border border-amber-700 text-amber-300'
-                      : 'bg-rose-950 border border-rose-700 text-rose-300'
+                      ? 'bg-amber-800/80 border border-amber-600 text-amber-100'
+                      : 'bg-rose-800/80 border border-rose-600 text-rose-100'
                   }`}
                 >
                   <span
                     className={`w-2 h-2 rounded-full ${
                       status === 'green'
-                        ? 'bg-emerald-400'
+                        ? 'bg-emerald-300'
                         : status === 'orange'
-                        ? 'bg-amber-400'
-                        : 'bg-rose-500'
+                        ? 'bg-amber-300'
+                        : 'bg-rose-300'
                     }`}
                   ></span>
                   {status === 'green'
@@ -130,25 +129,25 @@ export const MemberDashboard: React.FC<MemberDashboardProps> = ({
                 </div>
               </div>
 
-              <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-slate-400">
+              <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-slate-300">
                 <div className="flex items-center gap-1 font-mono">
-                  <span className="text-slate-500">Member ID:</span>
-                  <span className="text-amber-400 font-bold">{member.member_number}</span>
+                  <span className="text-slate-400">Member ID:</span>
+                  <span className="text-amber-300 font-bold">{member.member_number}</span>
                   <button
                     onClick={handleCopyId}
-                    className="p-1 text-slate-400 hover:text-slate-200 rounded transition"
+                    className="p-1 text-slate-400 hover:text-white rounded transition"
                     title="Copy Member ID"
                   >
-                    {copiedId ? <Check className="w-3 h-3 text-emerald-400" /> : <Copy className="w-3 h-3" />}
+                    {copiedId ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
                   </button>
                 </div>
                 <div>•</div>
-                <div className="text-slate-300 font-semibold flex items-center gap-1">
+                <div className="text-slate-200 font-semibold flex items-center gap-1">
                   <Church className="w-3.5 h-3.5 text-slate-400" />
                   {member.branch_name || member.branch_code || 'Main Sanctuary'}
                 </div>
                 <div>•</div>
-                <div>Currency: <strong className="text-slate-200">{currencySymbol} ({member.currency_code})</strong></div>
+                <div>Currency: <strong className="text-white">{currencySymbol} ({member.currency_code})</strong></div>
                 <div>•</div>
                 <div>Joined: {member.join_date}</div>
               </div>
@@ -160,7 +159,7 @@ export const MemberDashboard: React.FC<MemberDashboardProps> = ({
             {/* Digital ID Card with QR Button */}
             <button
               onClick={() => setIsDigitalIdOpen(true)}
-              className="inline-flex items-center justify-center gap-1.5 px-3.5 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-amber-400 border border-slate-600 font-bold text-xs sm:text-sm transition"
+              className="inline-flex items-center justify-center gap-1.5 px-3.5 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-amber-300 border border-slate-700 font-bold text-xs sm:text-sm transition"
               title="Preview and download your digital membership ID card with QR code"
             >
               <QrCode className="w-4 h-4" />
@@ -169,15 +168,15 @@ export const MemberDashboard: React.FC<MemberDashboardProps> = ({
 
             <button
               onClick={handleExportPDF}
-              className="inline-flex items-center justify-center gap-1.5 px-3.5 py-2 rounded-lg bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs sm:text-sm transition"
+              className="inline-flex items-center justify-center gap-1.5 px-3.5 py-2 rounded-xl bg-amber-600 hover:bg-amber-500 text-white font-bold text-xs sm:text-sm transition shadow-sm"
             >
               <Download className="w-4 h-4" />
-              Statement PDF
+              Report PDF
             </button>
 
             <button
               onClick={onOpenNotifications}
-              className="relative p-2 rounded-lg bg-slate-950 hover:bg-slate-800 border border-slate-700 text-slate-300 transition"
+              className="relative p-2 rounded-xl bg-slate-850 hover:bg-slate-800 border border-slate-700 text-slate-300 transition"
               title="Notifications"
             >
               <Bell className="w-4 h-4" />
@@ -190,7 +189,7 @@ export const MemberDashboard: React.FC<MemberDashboardProps> = ({
 
             <button
               onClick={onSwitchMember}
-              className="px-3 py-2 rounded-lg bg-slate-950 hover:bg-slate-800 border border-slate-700 text-slate-300 text-xs font-semibold transition"
+              className="px-3 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-200 text-xs font-semibold transition"
             >
               Change ID
             </button>
@@ -200,12 +199,12 @@ export const MemberDashboard: React.FC<MemberDashboardProps> = ({
         {/* Traffic Light Standing Banner Bar & Quick QR Box */}
         <div className="mt-4 flex flex-col md:flex-row items-stretch md:items-center justify-between gap-3">
           <div
-            className={`flex-1 p-3 rounded-lg border flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs ${
+            className={`flex-1 p-3 rounded-xl border flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs ${
               status === 'green'
-                ? 'bg-emerald-950/40 border-emerald-800 text-emerald-200'
+                ? 'bg-emerald-950/60 border-emerald-800 text-emerald-200'
                 : status === 'orange'
-                ? 'bg-amber-950/40 border-amber-800 text-amber-200'
-                : 'bg-rose-950/40 border-rose-800 text-rose-200'
+                ? 'bg-amber-950/60 border-amber-800 text-amber-200'
+                : 'bg-rose-950/60 border-rose-800 text-rose-200'
             }`}
           >
             <div className="flex items-center gap-2">
@@ -219,8 +218,8 @@ export const MemberDashboard: React.FC<MemberDashboardProps> = ({
               <span className="font-semibold">{statusReason}</span>
             </div>
 
-            <div className="text-[11px] text-slate-400">
-              Compulsory Due: <strong className="font-mono text-slate-200">{currencySymbol}{member.monthly_due_amount.toFixed(2)}/mo</strong>
+            <div className="text-[11px] text-slate-300">
+              Compulsory Due: <strong className="font-mono text-white">{currencySymbol}{member.monthly_due_amount.toFixed(2)}/mo</strong>
             </div>
           </div>
 
@@ -228,17 +227,17 @@ export const MemberDashboard: React.FC<MemberDashboardProps> = ({
           {qrDataUrl && (
             <button
               onClick={() => setIsDigitalIdOpen(true)}
-              className="p-2 px-3 rounded-lg bg-slate-950 border border-slate-800 hover:border-slate-700 flex items-center gap-2.5 transition text-left group shrink-0"
+              className="p-2 px-3 rounded-xl bg-slate-800/80 border border-slate-700 hover:border-slate-600 flex items-center gap-2.5 transition text-left shrink-0"
               title="Click to view full digital ID card"
             >
               <div className="w-7 h-7 bg-white rounded p-0.5 shrink-0">
                 <img src={qrDataUrl} alt="QR Thumbnail" className="w-full h-full object-contain" />
               </div>
               <div className="text-[11px]">
-                <span className="font-mono font-bold text-amber-400 block group-hover:text-amber-300">
+                <span className="font-mono font-bold text-amber-300 block">
                   {member.member_number}
                 </span>
-                <span className="text-slate-400 text-[10px]">View ID Card & QR →</span>
+                <span className="text-slate-300 text-[10px]">View ID Card & QR →</span>
               </div>
             </button>
           )}
@@ -248,126 +247,128 @@ export const MemberDashboard: React.FC<MemberDashboardProps> = ({
       {/* 4 Financial & Stewardship Summary Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         {/* Monthly Membership Dues (Compulsory) */}
-        <div className="p-4 rounded-xl bg-slate-900 border border-slate-800 shadow-sm flex flex-col justify-between">
+        <div className="p-5 rounded-2xl bg-white border border-slate-200 shadow-sm flex flex-col justify-between">
           <div className="flex items-center justify-between">
-            <span className="text-xs font-semibold uppercase tracking-wider text-slate-400">Monthly Dues</span>
-            <div className="w-7 h-7 rounded bg-slate-950 border border-slate-800 text-amber-400 flex items-center justify-center">
-              <Award className="w-3.5 h-3.5" />
+            <span className="text-xs font-bold uppercase tracking-wider text-slate-500">Monthly Dues</span>
+            <div className="w-8 h-8 rounded-lg bg-amber-50 text-amber-800 flex items-center justify-center">
+              <Award className="w-4 h-4" />
             </div>
           </div>
-          <div className="my-2">
-            <div className="text-2xl font-bold text-slate-100 font-mono">
+          <div className="my-2.5">
+            <div className="text-2xl font-bold text-slate-900 font-mono">
               {currencySymbol}{summary.totalDues.toFixed(2)}
             </div>
-            <p className="text-[11px] text-slate-400 mt-0.5">
-              Sept 2026: {summary.currentMonthDuesPaid ? 'Covered / Paid' : `Pending (${currencySymbol}${member.monthly_due_amount.toFixed(2)})`}
+            <p className="text-[11px] text-slate-500 mt-0.5">
+              Sept 2026: <strong className={summary.currentMonthDuesPaid ? 'text-emerald-700' : 'text-amber-700'}>
+                {summary.currentMonthDuesPaid ? 'Covered / Paid' : `Pending (${currencySymbol}${member.monthly_due_amount.toFixed(2)})`}
+              </strong>
             </p>
           </div>
-          <div className="text-[11px] text-slate-500 pt-2 border-t border-slate-800">
+          <div className="text-[11px] text-slate-600 pt-2 border-t border-slate-100">
             {currencySymbol}{member.monthly_due_amount.toFixed(2)} / month compulsory
           </div>
         </div>
 
         {/* Kingdom Investment (Optional) */}
-        <div className="p-4 rounded-xl bg-slate-900 border border-slate-800 shadow-sm flex flex-col justify-between">
+        <div className="p-5 rounded-2xl bg-white border border-slate-200 shadow-sm flex flex-col justify-between">
           <div className="flex items-center justify-between">
-            <span className="text-xs font-semibold uppercase tracking-wider text-slate-400">Kingdom Investment</span>
-            <div className="w-7 h-7 rounded bg-slate-950 border border-slate-800 text-slate-300 flex items-center justify-center">
-              <Building2 className="w-3.5 h-3.5" />
+            <span className="text-xs font-bold uppercase tracking-wider text-slate-500">Kingdom Investment</span>
+            <div className="w-8 h-8 rounded-lg bg-slate-100 text-slate-700 flex items-center justify-center">
+              <Building2 className="w-4 h-4" />
             </div>
           </div>
-          <div className="my-2">
-            <div className="text-2xl font-bold text-slate-100 font-mono">
+          <div className="my-2.5">
+            <div className="text-2xl font-bold text-slate-900 font-mono">
               {currencySymbol}{summary.totalKingdomInvestment.toFixed(2)}
             </div>
-            <p className="text-[11px] text-slate-400 mt-0.5">
+            <p className="text-[11px] text-slate-500 mt-0.5">
               Building & Missions Fund
             </p>
           </div>
-          <div className="text-[11px] text-slate-500 pt-2 border-t border-slate-800">
-            Partner Stewardship
+          <div className="text-[11px] text-slate-600 pt-2 border-t border-slate-100">
+            Voluntary Partner Stewardship
           </div>
         </div>
 
         {/* Total Given All-Time */}
-        <div className="p-4 rounded-xl bg-slate-900 border border-slate-800 shadow-sm flex flex-col justify-between">
+        <div className="p-5 rounded-2xl bg-white border border-slate-200 shadow-sm flex flex-col justify-between">
           <div className="flex items-center justify-between">
-            <span className="text-xs font-semibold uppercase tracking-wider text-slate-400">Total Stewardship</span>
-            <div className="w-7 h-7 rounded bg-slate-950 border border-slate-800 text-emerald-400 flex items-center justify-center">
-              <DollarSign className="w-3.5 h-3.5" />
+            <span className="text-xs font-bold uppercase tracking-wider text-slate-500">Total Stewardship</span>
+            <div className="w-8 h-8 rounded-lg bg-emerald-50 text-emerald-800 flex items-center justify-center">
+              <DollarSign className="w-4 h-4" />
             </div>
           </div>
-          <div className="my-2">
-            <div className="text-2xl font-bold text-slate-100 font-mono">
+          <div className="my-2.5">
+            <div className="text-2xl font-bold text-slate-900 font-mono">
               {currencySymbol}{summary.totalAllTime.toFixed(2)}
             </div>
-            <p className="text-[11px] text-slate-400 mt-0.5">
+            <p className="text-[11px] text-slate-500 mt-0.5">
               Total Recorded Given
             </p>
           </div>
-          <div className="text-[11px] text-slate-500 pt-2 border-t border-slate-800">
+          <div className="text-[11px] text-slate-600 pt-2 border-t border-slate-100">
             Currency: {member.currency_code}
           </div>
         </div>
 
         {/* 2026 Dues Standing & Months Covered */}
-        <div className="p-4 rounded-xl bg-slate-900 border border-slate-800 shadow-sm flex flex-col justify-between">
+        <div className="p-5 rounded-2xl bg-white border border-slate-200 shadow-sm flex flex-col justify-between">
           <div className="flex items-center justify-between">
-            <span className="text-xs font-semibold uppercase tracking-wider text-slate-400">Months Covered (2026)</span>
-            <div className="w-7 h-7 rounded bg-slate-950 border border-slate-800 text-amber-400 flex items-center justify-center">
-              <Calendar className="w-3.5 h-3.5" />
+            <span className="text-xs font-bold uppercase tracking-wider text-slate-500">Months Covered (2026)</span>
+            <div className="w-8 h-8 rounded-lg bg-slate-100 text-slate-800 flex items-center justify-center">
+              <Calendar className="w-4 h-4" />
             </div>
           </div>
-          <div className="my-2">
-            <div className="text-2xl font-bold text-slate-100 font-mono">
+          <div className="my-2.5">
+            <div className="text-2xl font-bold text-slate-900 font-mono">
               {coveredCount} of 12
             </div>
-            <p className="text-[11px] text-slate-400 mt-0.5">
+            <p className="text-[11px] text-slate-500 mt-0.5">
               {status === 'green' ? '🟢 Fully Up to Date' : status === 'orange' ? '🟠 Current Month Pending' : '🔴 Dues Overdue'}
             </p>
           </div>
-          <div className="text-[11px] text-slate-500 pt-2 border-t border-slate-800">
-            Standing: <span className="font-semibold text-slate-300 uppercase">{status}</span>
+          <div className="text-[11px] text-slate-600 pt-2 border-t border-slate-100">
+            Standing: <span className="font-bold text-slate-800 uppercase">{status}</span>
           </div>
         </div>
       </div>
 
       {/* Main Content Area Organized by Dates */}
-      <div className="bg-slate-900 border border-slate-800 rounded-xl shadow-sm overflow-hidden">
+      <div className="bg-white border border-slate-200 rounded-2xl shadow-sm overflow-hidden">
         {/* Navigation Tabs */}
-        <div className="flex border-b border-slate-800 overflow-x-auto scrollbar-none bg-slate-950">
+        <div className="flex border-b border-slate-200 overflow-x-auto scrollbar-none bg-slate-50 p-1">
           <button
             onClick={() => setActiveTab('contributions')}
-            className={`flex items-center gap-2 px-4 py-3 text-xs sm:text-sm font-semibold border-b-2 whitespace-nowrap transition ${
+            className={`flex items-center gap-2 px-4 py-2.5 text-xs sm:text-sm font-semibold rounded-xl transition ${
               activeTab === 'contributions'
-                ? 'border-amber-500 text-amber-400 bg-slate-900'
-                : 'border-transparent text-slate-400 hover:text-slate-200'
+                ? 'bg-white text-slate-900 shadow-sm border border-slate-200/80 font-bold'
+                : 'text-slate-600 hover:text-slate-900'
             }`}
           >
-            <DollarSign className="w-4 h-4" />
+            <DollarSign className="w-4 h-4 text-amber-700" />
             Contributions Ledger by Date ({contributions.length})
           </button>
 
           <button
             onClick={() => setActiveTab('events')}
-            className={`flex items-center gap-2 px-4 py-3 text-xs sm:text-sm font-semibold border-b-2 whitespace-nowrap transition ${
+            className={`flex items-center gap-2 px-4 py-2.5 text-xs sm:text-sm font-semibold rounded-xl transition ${
               activeTab === 'events'
-                ? 'border-amber-500 text-amber-400 bg-slate-900'
-                : 'border-transparent text-slate-400 hover:text-slate-200'
+                ? 'bg-white text-slate-900 shadow-sm border border-slate-200/80 font-bold'
+                : 'text-slate-600 hover:text-slate-900'
             }`}
           >
-            <Clock className="w-4 h-4" />
+            <Clock className="w-4 h-4 text-amber-700" />
             Upcoming Church Events ({upcomingEvents.length})
           </button>
         </div>
 
         {/* Tab 1: Financial Contributions Ledger (By Dates) */}
         {activeTab === 'contributions' && (
-          <div className="p-4 sm:p-5 space-y-4">
-            <div className="flex items-center justify-between text-xs text-slate-400">
+          <div className="p-5 sm:p-6 space-y-4">
+            <div className="flex items-center justify-between text-xs text-slate-600">
               <span>Official recorded ledger of payments received by church administration.</span>
               <span className="font-mono">
-                Total: <strong className="text-slate-200">{currencySymbol}{summary.totalAllTime.toFixed(2)}</strong>
+                Total: <strong className="text-slate-900">{currencySymbol}{summary.totalAllTime.toFixed(2)}</strong>
               </span>
             </div>
 
@@ -376,37 +377,37 @@ export const MemberDashboard: React.FC<MemberDashboardProps> = ({
                 No contribution dates recorded yet.
               </div>
             ) : (
-              <div className="divide-y divide-slate-800 border border-slate-800 rounded-lg overflow-hidden bg-slate-950">
+              <div className="divide-y divide-slate-100 border border-slate-200 rounded-xl overflow-hidden bg-white">
                 {contributions.map((c) => (
                   <div
                     key={c.id}
-                    className="p-3.5 flex flex-col sm:flex-row sm:items-center justify-between gap-3 hover:bg-slate-900/50 transition"
+                    className="p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 hover:bg-slate-50/70 transition"
                   >
-                    <div className="flex items-start gap-3">
-                      <div className="p-2 rounded bg-slate-900 border border-slate-800 shrink-0 text-slate-300">
+                    <div className="flex items-start gap-3.5">
+                      <div className="p-2.5 rounded-xl bg-slate-100 border border-slate-200 shrink-0 text-slate-700">
                         <DollarSign className="w-4 h-4" />
                       </div>
 
                       <div className="space-y-0.5">
                         <div className="flex flex-wrap items-center gap-2">
-                          <span className="font-semibold text-sm text-slate-100 capitalize">
+                          <span className="font-bold text-sm text-slate-900 capitalize">
                             {c.category === 'membership_fee'
                               ? 'Monthly Membership Due'
                               : c.category === 'kingdom_investment'
                               ? 'Kingdom Investment'
                               : 'Special Offering'}
                           </span>
-                          <span className="text-[11px] font-mono text-slate-400 bg-slate-900 px-1.5 py-0.5 rounded border border-slate-800">
+                          <span className="text-[11px] font-mono text-slate-600 bg-slate-100 px-2 py-0.5 rounded border border-slate-200">
                             {c.receipt_no}
                           </span>
-                          <span className="inline-flex items-center gap-1 text-[10px] text-emerald-400 font-medium">
+                          <span className="inline-flex items-center gap-1 text-[10px] text-emerald-700 font-semibold bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">
                             <ShieldCheck className="w-3 h-3" />
                             Verified
                           </span>
                         </div>
 
-                        <div className="flex flex-wrap items-center gap-x-3 text-xs text-slate-400">
-                          <span className="font-semibold text-slate-300">Date: {c.date}</span>
+                        <div className="flex flex-wrap items-center gap-x-3 text-xs text-slate-500">
+                          <span className="font-semibold text-slate-700">Date: {c.date}</span>
                           <span>•</span>
                           <span>Method: {c.payment_method}</span>
                           {c.for_month && (
@@ -417,19 +418,19 @@ export const MemberDashboard: React.FC<MemberDashboardProps> = ({
                           )}
                         </div>
 
-                        {c.notes && <p className="text-xs text-slate-500 italic mt-0.5">{c.notes}</p>}
+                        {c.notes && <p className="text-xs text-slate-600 italic mt-0.5">{c.notes}</p>}
                       </div>
                     </div>
 
-                    <div className="flex items-center justify-between sm:justify-end gap-3 self-end sm:self-auto w-full sm:w-auto pt-2 sm:pt-0 border-t border-slate-800 sm:border-0">
-                      <span className="text-base font-bold font-mono text-slate-100">
+                    <div className="flex items-center justify-between sm:justify-end gap-3 self-end sm:self-auto w-full sm:w-auto pt-2 sm:pt-0 border-t border-slate-100 sm:border-0">
+                      <span className="text-base font-bold font-mono text-slate-900">
                         {currencySymbol}{c.amount.toFixed(2)}
                       </span>
                       <button
                         onClick={() => setSelectedContribution(c)}
-                        className="inline-flex items-center gap-1 px-2.5 py-1 rounded bg-slate-850 hover:bg-slate-800 border border-slate-700 text-slate-300 text-xs font-semibold transition"
+                        className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 border border-slate-300 text-slate-700 text-xs font-semibold transition"
                       >
-                        <Eye className="w-3 h-3" />
+                        <Eye className="w-3.5 h-3.5" />
                         Receipt
                       </button>
                     </div>
@@ -442,8 +443,8 @@ export const MemberDashboard: React.FC<MemberDashboardProps> = ({
 
         {/* Tab 2: Upcoming Church Events & Services (By Dates) */}
         {activeTab === 'events' && (
-          <div className="p-4 sm:p-5 space-y-4">
-            <div className="text-xs text-slate-400">
+          <div className="p-5 sm:p-6 space-y-4">
+            <div className="text-xs text-slate-600">
               Official schedule of upcoming services, meetings, and activities at {churchName}.
             </div>
 
@@ -452,24 +453,24 @@ export const MemberDashboard: React.FC<MemberDashboardProps> = ({
                 No upcoming events scheduled at this time.
               </div>
             ) : (
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 {upcomingEvents.map((ev) => (
                   <div
                     key={ev.id}
-                    className="p-4 rounded-lg bg-slate-950 border border-slate-800 space-y-2.5 flex flex-col justify-between"
+                    className="p-5 rounded-2xl bg-white border border-slate-200 space-y-3 flex flex-col justify-between shadow-xs"
                   >
-                    <div className="space-y-1.5">
+                    <div className="space-y-2">
                       <div className="flex items-center justify-between">
-                        <span className="text-[10px] uppercase font-bold tracking-wider px-2 py-0.5 rounded bg-slate-900 text-amber-400 border border-slate-800">
+                        <span className="text-[10px] uppercase font-bold tracking-wider px-2.5 py-0.5 rounded bg-slate-100 text-amber-800 border border-slate-200">
                           {ev.category}
                         </span>
                       </div>
 
-                      <h4 className="font-bold text-sm text-slate-100">{ev.title}</h4>
+                      <h4 className="font-bold text-base text-slate-900">{ev.title}</h4>
 
-                      <div className="space-y-1 text-xs text-slate-400">
-                        <div className="flex items-center gap-1.5 text-slate-300 font-mono">
-                          <Clock className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                      <div className="space-y-1 text-xs text-slate-600">
+                        <div className="flex items-center gap-1.5 text-slate-800 font-mono font-medium">
+                          <Clock className="w-3.5 h-3.5 text-slate-500 shrink-0" />
                           <span>{ev.start_date} {ev.end_date ? `— ${ev.end_date}` : ''}</span>
                         </div>
                         <div className="flex items-center gap-1.5">
@@ -479,13 +480,13 @@ export const MemberDashboard: React.FC<MemberDashboardProps> = ({
                       </div>
 
                       {ev.description && (
-                        <p className="text-xs text-slate-400 leading-relaxed pt-1">
+                        <p className="text-xs text-slate-600 leading-relaxed pt-1">
                           {ev.description}
                         </p>
                       )}
                     </div>
 
-                    <div className="pt-2 border-t border-slate-800 flex items-center justify-between text-[11px] text-slate-500">
+                    <div className="pt-3 border-t border-slate-100 flex items-center justify-between text-[11px] text-slate-500">
                       <span>{ev.target_ministry || 'All Welcome'}</span>
                     </div>
                   </div>

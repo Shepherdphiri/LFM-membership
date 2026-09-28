@@ -82,7 +82,7 @@ export default function App() {
   const unreadCount = dashboardData ? dashboardData.notifications.filter((n) => !n.is_read).length : 0;
 
   return (
-    <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col font-sans selection:bg-amber-500 selection:text-slate-950">
+    <div className="min-h-screen bg-slate-100 text-slate-800 flex flex-col font-sans selection:bg-amber-600 selection:text-white">
       {/* Header with Church Logo & Traffic Light Indicator */}
       <Header
         member={dashboardData ? dashboardData.member : null}
@@ -99,10 +99,10 @@ export default function App() {
       <main className="flex-1">
         {loading && !dashboardData ? (
           <div className="min-h-[60vh] flex flex-col items-center justify-center p-6 text-center space-y-3">
-            <span className="animate-spin inline-block w-6 h-6 border-2 border-amber-500 border-t-transparent rounded-full"></span>
+            <span className="animate-spin inline-block w-6 h-6 border-2 border-amber-600 border-t-transparent rounded-full"></span>
             <div className="space-y-0.5">
-              <h3 className="text-sm font-semibold text-slate-200">Verifying Member Account</h3>
-              <p className="text-xs text-slate-400">Loading records from church database...</p>
+              <h3 className="text-sm font-semibold text-slate-700">Verifying Member Account</h3>
+              <p className="text-xs text-slate-500">Loading records from church database...</p>
             </div>
           </div>
         ) : dashboardData ? (
@@ -123,25 +123,25 @@ export default function App() {
       </main>
 
       {/* Footer */}
-      <footer className="border-t border-slate-800 bg-slate-950 py-6 px-4 sm:px-6 lg:px-8 text-xs text-slate-500 mt-10">
+      <footer className="border-t border-slate-200 bg-white py-6 px-4 sm:px-6 lg:px-8 text-xs text-slate-500 mt-10">
         <div className="max-w-7xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-4">
-          <div className="flex items-center gap-2 text-slate-400">
-            <Church className="w-4 h-4 text-amber-500" />
-            <span className="font-semibold text-slate-300">
-              {churchSettings?.church_name || 'GracePoint Church'}
+          <div className="flex items-center gap-2 text-slate-600">
+            <Church className="w-4 h-4 text-amber-700" />
+            <span className="font-semibold text-slate-800">
+              {churchSettings?.church_name || 'Living Faith Membership Portal'}
             </span>
             <span>•</span>
-            <span className="font-mono text-slate-500">
-              Tax ID: {churchSettings?.tax_id || 'CH-TAX-8921-EX'}
+            <span className="text-slate-500">
+              {churchSettings?.tagline || 'Living Faith International Assemblies • Stewardship & Member Records'}
             </span>
           </div>
 
-          <div className="flex flex-wrap items-center gap-3 text-slate-400">
+          <div className="flex flex-wrap items-center gap-3 text-slate-500">
             {churchSettings?.address && <span>{churchSettings.address}</span>}
             <span>•</span>
             <button
               onClick={() => setIsAdminOpen(true)}
-              className="text-amber-400 hover:text-amber-300 font-medium"
+              className="text-amber-800 hover:text-amber-900 font-semibold underline underline-offset-2"
             >
               Admin Portal
             </button>

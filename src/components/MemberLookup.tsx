@@ -12,13 +12,10 @@ import {
   Copy,
   Check,
   QrCode,
-  Download,
   Camera,
   Upload,
   Trash2,
   Lock,
-  Building2,
-  DollarSign,
 } from 'lucide-react';
 import { playGentleChime } from '../utils/notifications';
 import { generateQRCodeDataURL } from '../utils/qrcode';
@@ -30,6 +27,49 @@ interface MemberLookupProps {
   errorMessage: string | null;
   churchSettings?: ChurchSettings;
 }
+
+const HARDCODED_BRANCHES: Branch[] = [
+  {
+    id: 1,
+    name: 'Lilongwe Branch (Malawi)',
+    code: 'LLW',
+    currency_symbol: 'MK',
+    currency_code: 'MWK',
+    default_monthly_due: 5000.0,
+    address: 'Area 47, Sector 3, Lilongwe, Malawi',
+    created_at: '2026-01-01',
+  },
+  {
+    id: 2,
+    name: 'Blantyre Branch (Malawi)',
+    code: 'BT',
+    currency_symbol: 'MK',
+    currency_code: 'MWK',
+    default_monthly_due: 5000.0,
+    address: 'Victoria Avenue, Blantyre, Malawi',
+    created_at: '2026-01-01',
+  },
+  {
+    id: 3,
+    name: 'Nkhatabay Branch (Malawi)',
+    code: 'NKB',
+    currency_symbol: 'MK',
+    currency_code: 'MWK',
+    default_monthly_due: 3000.0,
+    address: 'Boma Center, Nkhatabay, Malawi',
+    created_at: '2026-01-01',
+  },
+  {
+    id: 4,
+    name: 'Cape Town Branch (South Africa)',
+    code: 'CPT',
+    currency_symbol: 'R',
+    currency_code: 'ZAR',
+    default_monthly_due: 150.0,
+    address: 'Foreshore, Cape Town, 8001, South Africa',
+    created_at: '2026-01-01',
+  },
+];
 
 export const MemberLookup: React.FC<MemberLookupProps> = ({
   onLookup,
@@ -48,8 +88,8 @@ export const MemberLookup: React.FC<MemberLookupProps> = ({
   const [firstName, setFirstName] = useState('');
   const [surname, setSurname] = useState('');
   const [phone, setPhone] = useState('');
-  const [selectedBranchId, setSelectedBranchId] = useState<number | ''>('');
-  const [branches, setBranches] = useState<Branch[]>([]);
+  const [selectedBranchId, setSelectedBranchId] = useState<number | ''>(1);
+  const [branches, setBranches] = useState<Branch[]>(HARDCODED_BRANCHES);
   const [branchesLoading, setBranchesLoading] = useState(false);
   const [photoUrl, setPhotoUrl] = useState<string>('');
   const [hasKingdomInvestment, setHasKingdomInvestment] = useState(false);
@@ -64,8 +104,8 @@ export const MemberLookup: React.FC<MemberLookupProps> = ({
   const [isDigitalCardOpen, setIsDigitalCardOpen] = useState(false);
   const [copiedId, setCopiedId] = useState(false);
 
-  const churchName = churchSettings?.church_name || 'GracePoint Church';
-  const churchTagline = churchSettings?.tagline || 'Church Stewardship & Member Records Portal';
+  const churchName = churchSettings?.church_name || 'Living Faith Membership Portal';
+  const churchTagline = churchSettings?.tagline || 'Living Faith International Assemblies • Stewardship & Member Records';
   const logoUrl = churchSettings?.logo_url;
 
   // Load admin-defined branches
@@ -95,7 +135,7 @@ export const MemberLookup: React.FC<MemberLookupProps> = ({
     reader.onload = (event) => {
       const img = new Image();
       img.onload = () => {
-        // Resize to maximum 320x320 for light footprint in PDF and storage
+        // Resize to standard avatar dimensions (max 320x320)
         const canvas = document.createElement('canvas');
         const MAX_SIZE = 320;
         let width = img.width;
@@ -142,7 +182,7 @@ export const MemberLookup: React.FC<MemberLookupProps> = ({
   const handleRegisterSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!firstName.trim() || !surname.trim() || !phone.trim() || !selectedBranchId) {
-      setRegError('Please complete all required registration fields.');
+      setRegError('Please fill in First Name, Surname, Phone number, and select your Church Branch.');
       return;
     }
 
@@ -157,7 +197,7 @@ export const MemberLookup: React.FC<MemberLookupProps> = ({
         phone: phone.trim(),
         branchId: Number(selectedBranchId),
         photoUrl: photoUrl || undefined,
-        hasMonthlyDues: true, // Compulsory!
+        hasMonthlyDues: true, // Monthly dues is compulsory!
         hasKingdomInvestment,
         kingdomInvestmentAmount: hasKingdomInvestment ? parseFloat(kingdomInvestmentAmount) || 0 : 0,
       });
@@ -224,40 +264,40 @@ export const MemberLookup: React.FC<MemberLookupProps> = ({
             <img
               src={logoUrl}
               alt={churchName}
-              className="h-16 w-16 object-contain rounded-xl border border-slate-700 bg-slate-900 p-1"
+              className="h-16 w-16 object-contain rounded-xl border border-slate-300 bg-white p-1 shadow-sm"
             />
           ) : (
-            <div className="w-14 h-14 rounded-xl bg-slate-900 border border-slate-700 flex items-center justify-center text-amber-500 shadow-sm">
+            <div className="w-14 h-14 rounded-xl bg-slate-900 border border-slate-800 flex items-center justify-center text-amber-400 shadow-sm">
               <Church className="w-7 h-7" />
             </div>
           )}
         </div>
 
-        <h2 className="text-2xl sm:text-3xl font-bold text-slate-100 font-serif tracking-tight">
+        <h2 className="text-2xl sm:text-3xl font-bold text-slate-900 font-serif tracking-tight">
           {churchName}
         </h2>
-        <p className="text-xs sm:text-sm text-slate-400 font-medium">
+        <p className="text-xs sm:text-sm text-slate-600 font-medium">
           {churchTagline}
         </p>
       </div>
 
       {/* Main Card with the two options: Enter Member ID OR Register */}
-      <div className="bg-slate-900 border border-slate-800 rounded-xl shadow-lg overflow-hidden">
+      <div className="bg-white border border-slate-200 rounded-2xl shadow-sm overflow-hidden">
         {/* Toggle Bar: Enter Member ID vs Register */}
-        <div className="grid grid-cols-2 p-1 bg-slate-950 border-b border-slate-800">
+        <div className="grid grid-cols-2 p-1.5 bg-slate-100 border-b border-slate-200 gap-1">
           <button
             type="button"
             onClick={() => {
               setMode('lookup');
               setGeneratedMemberNumber(null);
             }}
-            className={`py-2.5 px-3 rounded-lg text-xs sm:text-sm font-semibold flex items-center justify-center gap-2 transition ${
+            className={`py-2.5 px-3 rounded-xl text-xs sm:text-sm font-semibold flex items-center justify-center gap-2 transition ${
               mode === 'lookup'
-                ? 'bg-amber-500 text-slate-950 font-bold'
-                : 'text-slate-400 hover:text-slate-200'
+                ? 'bg-white text-slate-900 shadow-sm border border-slate-200 font-bold'
+                : 'text-slate-600 hover:text-slate-900'
             }`}
           >
-            <Search className="w-4 h-4" />
+            <Search className="w-4 h-4 text-amber-700" />
             Enter Member ID
           </button>
 
@@ -267,32 +307,32 @@ export const MemberLookup: React.FC<MemberLookupProps> = ({
               setMode('register');
               setGeneratedMemberNumber(null);
             }}
-            className={`py-2.5 px-3 rounded-lg text-xs sm:text-sm font-semibold flex items-center justify-center gap-2 transition ${
+            className={`py-2.5 px-3 rounded-xl text-xs sm:text-sm font-semibold flex items-center justify-center gap-2 transition ${
               mode === 'register'
-                ? 'bg-amber-500 text-slate-950 font-bold'
-                : 'text-slate-400 hover:text-slate-200'
+                ? 'bg-white text-slate-900 shadow-sm border border-slate-200 font-bold'
+                : 'text-slate-600 hover:text-slate-900'
             }`}
           >
-            <UserPlus className="w-4 h-4" />
+            <UserPlus className="w-4 h-4 text-amber-700" />
             Register
           </button>
         </div>
 
         {/* Content Body */}
-        <div className="p-5 sm:p-7">
+        <div className="p-6 sm:p-8">
           {mode === 'lookup' ? (
             /* OPTION 1: ENTER MEMBER ID */
             <div className="space-y-4">
               <div>
-                <h3 className="text-base font-semibold text-slate-100">Member ID Access</h3>
-                <p className="text-xs text-slate-400 mt-0.5">
-                  Enter your assigned Member ID to view your progress, digital ID card, and church events.
+                <h3 className="text-base font-bold text-slate-900">Member ID Lookup</h3>
+                <p className="text-xs text-slate-500 mt-0.5">
+                  Enter your assigned Member ID to view your stewardship records, digital ID card, and church events.
                 </p>
               </div>
 
               <form onSubmit={handleLookupSubmit} className="space-y-4">
                 <div>
-                  <label htmlFor="memberId" className="block text-xs font-semibold text-slate-300 mb-1.5">
+                  <label htmlFor="memberId" className="block text-xs font-semibold text-slate-700 mb-1.5">
                     Membership ID Number
                   </label>
                   <div className="relative">
@@ -305,17 +345,17 @@ export const MemberLookup: React.FC<MemberLookupProps> = ({
                       value={memberIdInput}
                       onChange={(e) => setMemberIdInput(e.target.value.toUpperCase())}
                       placeholder="e.g. MS-1001 or HRE-1001"
-                      className="w-full pl-10 pr-24 py-2.5 bg-slate-950 border border-slate-700 rounded-lg text-slate-100 font-mono font-bold text-sm placeholder:text-slate-600 focus:outline-none focus:border-amber-500 uppercase"
+                      className="w-full pl-10 pr-24 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-slate-900 font-mono font-bold text-sm placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-amber-600 focus:bg-white uppercase"
                       required
                       autoFocus
                     />
                     <button
                       type="submit"
                       disabled={isLoading || !memberIdInput.trim()}
-                      className="absolute right-1 top-1 bottom-1 px-4 rounded bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs transition disabled:opacity-40 flex items-center gap-1"
+                      className="absolute right-1 top-1 bottom-1 px-4 rounded-lg bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs transition disabled:opacity-40 flex items-center gap-1.5 shadow-sm"
                     >
                       {isLoading ? (
-                        <span className="animate-spin inline-block w-3.5 h-3.5 border-2 border-slate-950 border-t-transparent rounded-full"></span>
+                        <span className="animate-spin inline-block w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full"></span>
                       ) : (
                         <>
                           <span>View</span>
@@ -327,8 +367,8 @@ export const MemberLookup: React.FC<MemberLookupProps> = ({
                 </div>
 
                 {errorMessage && (
-                  <div className="p-3 rounded-lg bg-rose-950/40 border border-rose-800 text-rose-300 text-xs flex items-center gap-2">
-                    <AlertCircle className="w-4 h-4 shrink-0 text-rose-400" />
+                  <div className="p-3 rounded-xl bg-rose-50 border border-rose-200 text-rose-800 text-xs flex items-center gap-2">
+                    <AlertCircle className="w-4 h-4 shrink-0 text-rose-600" />
                     <span>{errorMessage}</span>
                   </div>
                 )}
@@ -340,47 +380,47 @@ export const MemberLookup: React.FC<MemberLookupProps> = ({
               {generatedMemberNumber ? (
                 /* Registration Success Screen with Generated QR Code & Digital ID Card Preview */
                 <div className="text-center py-4 space-y-4">
-                  <div className="w-12 h-12 rounded-xl bg-emerald-950 border border-emerald-700 text-emerald-400 mx-auto flex items-center justify-center">
+                  <div className="w-12 h-12 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-700 mx-auto flex items-center justify-center">
                     <CheckCircle2 className="w-6 h-6" />
                   </div>
 
                   <div>
-                    <h3 className="text-lg font-bold text-slate-100">Registration Complete</h3>
-                    <p className="text-xs text-slate-400 mt-0.5">
+                    <h3 className="text-lg font-bold text-slate-900">Registration Complete</h3>
+                    <p className="text-xs text-slate-500 mt-0.5">
                       Your branch Membership ID and scannable QR Code have been generated:
                     </p>
                   </div>
 
                   {/* ID & QR Code Card */}
-                  <div className="p-4 rounded-xl bg-slate-950 border border-slate-700 max-w-sm mx-auto text-center space-y-3">
-                    <span className="text-[10px] uppercase font-bold text-slate-400 tracking-wider block">
+                  <div className="p-5 rounded-2xl bg-slate-50 border border-slate-200 max-w-sm mx-auto text-center space-y-3">
+                    <span className="text-[10px] uppercase font-bold text-slate-500 tracking-wider block">
                       Generated Member ID & Scannable QR
                     </span>
 
                     <div className="flex items-center justify-center gap-2">
-                      <span className="font-mono font-bold text-2xl text-amber-400">
+                      <span className="font-mono font-bold text-2xl text-amber-800">
                         {generatedMemberNumber}
                       </span>
                       <button
                         onClick={handleCopyGeneratedId}
-                        className="p-1.5 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 transition"
+                        className="p-1.5 rounded-lg bg-white border border-slate-200 hover:bg-slate-100 text-slate-600 transition"
                         title="Copy Member ID"
                       >
-                        {copiedId ? <Check className="w-4 h-4 text-emerald-400" /> : <Copy className="w-4 h-4" />}
+                        {copiedId ? <Check className="w-4 h-4 text-emerald-600" /> : <Copy className="w-4 h-4" />}
                       </button>
                     </div>
 
                     {/* QR Code Container */}
                     {generatedQR && (
                       <div className="flex flex-col items-center justify-center pt-1">
-                        <div className="p-2.5 bg-white rounded-xl shadow-md border border-slate-200">
+                        <div className="p-3 bg-white rounded-xl shadow-sm border border-slate-200">
                           <img
                             src={generatedQR}
                             alt={`QR for ${generatedMemberNumber}`}
                             className="w-32 h-32 object-contain"
                           />
                         </div>
-                        <span className="text-[10px] text-slate-400 mt-1.5 font-mono">
+                        <span className="text-[10px] text-slate-500 mt-1.5 font-mono">
                           Unique QR Code generated for {generatedMemberNumber}
                         </span>
                       </div>
@@ -394,16 +434,16 @@ export const MemberLookup: React.FC<MemberLookupProps> = ({
                     <button
                       type="button"
                       onClick={() => setIsDigitalCardOpen(true)}
-                      className="w-full py-2 px-3 rounded-lg bg-slate-800 hover:bg-slate-700 border border-slate-600 text-amber-400 font-bold text-xs transition flex items-center justify-center gap-1.5"
+                      className="w-full py-2.5 px-3 rounded-xl bg-white hover:bg-slate-100 border border-slate-300 text-slate-800 font-bold text-xs transition flex items-center justify-center gap-1.5 shadow-sm"
                     >
-                      <QrCode className="w-4 h-4" />
+                      <QrCode className="w-4 h-4 text-amber-700" />
                       Preview & Download Digital ID Card
                     </button>
                   </div>
 
                   <button
                     onClick={handleProceedToDashboard}
-                    className="w-full py-2.5 rounded-lg bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs sm:text-sm transition flex items-center justify-center gap-1.5"
+                    className="w-full py-3 rounded-xl bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs sm:text-sm transition flex items-center justify-center gap-1.5 shadow-sm"
                   >
                     <span>Proceed to Dashboard</span>
                     <ArrowRight className="w-4 h-4" />
@@ -411,30 +451,30 @@ export const MemberLookup: React.FC<MemberLookupProps> = ({
                 </div>
               ) : (
                 /* The Registration Form */
-                <form onSubmit={handleRegisterSubmit} className="space-y-4 text-xs">
+                <form onSubmit={handleRegisterSubmit} className="space-y-5 text-xs">
                   <div>
-                    <h3 className="text-base font-semibold text-slate-100">Member Registration</h3>
-                    <p className="text-slate-400 text-xs mt-0.5">
-                      Please enter your details, upload your member photo, and confirm your stewardship commitments.
+                    <h3 className="text-base font-bold text-slate-900">Member Registration</h3>
+                    <p className="text-slate-500 text-xs mt-0.5">
+                      Please enter your details, upload your headshot photo, and confirm your stewardship commitments.
                     </p>
                   </div>
 
                   {regError && (
-                    <div className="p-2.5 rounded-lg bg-rose-950/40 border border-rose-800 text-rose-300 text-xs flex items-center gap-2">
-                      <AlertCircle className="w-4 h-4 shrink-0 text-rose-400" />
+                    <div className="p-3 rounded-xl bg-rose-50 border border-rose-200 text-rose-800 text-xs flex items-center gap-2">
+                      <AlertCircle className="w-4 h-4 shrink-0 text-rose-600" />
                       <span>{regError}</span>
                     </div>
                   )}
 
-                  {/* Profile Image Upload */}
-                  <div className="p-3.5 rounded-xl bg-slate-950 border border-slate-800 space-y-2.5">
-                    <label className="block font-semibold text-slate-300">
+                  {/* Profile Image Upload (Prominent & Clear) */}
+                  <div className="p-4 rounded-xl bg-slate-50 border border-slate-200 space-y-3">
+                    <label className="block font-bold text-slate-800 text-xs">
                       Member Profile Photo (For Digital ID Card)
                     </label>
-                    
+
                     <div className="flex items-center gap-4">
                       {photoUrl ? (
-                        <div className="relative w-16 h-16 rounded-xl overflow-hidden border-2 border-amber-500 shadow-md shrink-0">
+                        <div className="relative w-16 h-16 rounded-xl overflow-hidden border-2 border-amber-600 shadow-sm shrink-0">
                           <img
                             src={photoUrl}
                             alt="Uploaded member preview"
@@ -442,9 +482,9 @@ export const MemberLookup: React.FC<MemberLookupProps> = ({
                           />
                         </div>
                       ) : (
-                        <div className="w-16 h-16 rounded-xl bg-slate-900 border border-slate-700 flex flex-col items-center justify-center text-slate-500 shrink-0">
+                        <div className="w-16 h-16 rounded-xl bg-white border border-dashed border-slate-300 flex flex-col items-center justify-center text-slate-400 shrink-0">
                           <Camera className="w-6 h-6 text-slate-400" />
-                          <span className="text-[9px] mt-0.5 text-slate-500">Photo</span>
+                          <span className="text-[9px] mt-0.5 font-medium">Headshot</span>
                         </div>
                       )}
 
@@ -460,9 +500,9 @@ export const MemberLookup: React.FC<MemberLookupProps> = ({
                           />
                           <label
                             htmlFor="member-photo-upload"
-                            className="cursor-pointer inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 border border-slate-600 text-slate-200 text-xs font-semibold transition"
+                            className="cursor-pointer inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white hover:bg-slate-50 border border-slate-300 text-slate-700 text-xs font-semibold shadow-sm transition"
                           >
-                            <Upload className="w-3.5 h-3.5 text-amber-400" />
+                            <Upload className="w-3.5 h-3.5 text-amber-700" />
                             {photoUrl ? 'Change Photo' : 'Upload Image'}
                           </label>
 
@@ -470,7 +510,7 @@ export const MemberLookup: React.FC<MemberLookupProps> = ({
                             <button
                               type="button"
                               onClick={handleRemovePhoto}
-                              className="p-1.5 rounded-lg bg-rose-950/60 hover:bg-rose-900/60 border border-rose-800 text-rose-300 transition"
+                              className="p-1.5 rounded-lg bg-white hover:bg-rose-50 border border-slate-300 text-rose-600 transition"
                               title="Remove photo"
                             >
                               <Trash2 className="w-3.5 h-3.5" />
@@ -478,7 +518,7 @@ export const MemberLookup: React.FC<MemberLookupProps> = ({
                           )}
                         </div>
                         <p className="text-[11px] text-slate-500">
-                          Clear front-facing picture. This will appear on your digital ID card & church profile.
+                          Clear front-facing passport or headshot picture for your digital membership card.
                         </p>
                       </div>
                     </div>
@@ -486,13 +526,13 @@ export const MemberLookup: React.FC<MemberLookupProps> = ({
 
                   {/* Title */}
                   <div>
-                    <label className="block font-semibold text-slate-300 mb-1">
+                    <label className="block font-semibold text-slate-700 mb-1">
                       Title
                     </label>
                     <select
                       value={title}
                       onChange={(e) => setTitle(e.target.value)}
-                      className="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded-lg text-slate-100 text-xs sm:text-sm focus:outline-none focus:border-amber-500"
+                      className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl text-slate-800 text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-amber-600 focus:bg-white"
                     >
                       <option value="Brother">Brother</option>
                       <option value="Sister">Sister</option>
@@ -511,7 +551,7 @@ export const MemberLookup: React.FC<MemberLookupProps> = ({
                   {/* Name and Surname */}
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                     <div>
-                      <label className="block font-semibold text-slate-300 mb-1">
+                      <label className="block font-semibold text-slate-700 mb-1">
                         First Name *
                       </label>
                       <input
@@ -520,12 +560,12 @@ export const MemberLookup: React.FC<MemberLookupProps> = ({
                         onChange={(e) => setFirstName(e.target.value)}
                         required
                         placeholder="First name"
-                        className="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded-lg text-slate-100 text-xs sm:text-sm focus:outline-none focus:border-amber-500"
+                        className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl text-slate-800 text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-amber-600 focus:bg-white"
                       />
                     </div>
 
                     <div>
-                      <label className="block font-semibold text-slate-300 mb-1">
+                      <label className="block font-semibold text-slate-700 mb-1">
                         Surname *
                       </label>
                       <input
@@ -534,18 +574,18 @@ export const MemberLookup: React.FC<MemberLookupProps> = ({
                         onChange={(e) => setSurname(e.target.value)}
                         required
                         placeholder="Surname"
-                        className="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded-lg text-slate-100 text-xs sm:text-sm focus:outline-none focus:border-amber-500"
+                        className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl text-slate-800 text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-amber-600 focus:bg-white"
                       />
                     </div>
                   </div>
 
                   {/* Phone number */}
                   <div>
-                    <label className="block font-semibold text-slate-300 mb-1">
+                    <label className="block font-semibold text-slate-700 mb-1">
                       Phone Number *
                     </label>
                     <div className="relative">
-                      <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-500">
+                      <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-400">
                         <Phone className="w-3.5 h-3.5" />
                       </div>
                       <input
@@ -553,15 +593,15 @@ export const MemberLookup: React.FC<MemberLookupProps> = ({
                         value={phone}
                         onChange={(e) => setPhone(e.target.value)}
                         required
-                        placeholder="Phone number"
-                        className="w-full pl-8 pr-3 py-2 bg-slate-950 border border-slate-700 rounded-lg text-slate-100 text-xs sm:text-sm focus:outline-none focus:border-amber-500"
+                        placeholder="e.g. +1 555 234 5678"
+                        className="w-full pl-8 pr-3 py-2 bg-slate-50 border border-slate-300 rounded-xl text-slate-800 text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-amber-600 focus:bg-white"
                       />
                     </div>
                   </div>
 
-                  {/* Church branch (chosen from branches defined by admin) */}
+                  {/* Church branch */}
                   <div>
-                    <label className="block font-semibold text-slate-300 mb-1">
+                    <label className="block font-semibold text-slate-700 mb-1">
                       Church Branch *
                     </label>
                     {branchesLoading ? (
@@ -571,7 +611,7 @@ export const MemberLookup: React.FC<MemberLookupProps> = ({
                         value={selectedBranchId}
                         onChange={(e) => setSelectedBranchId(Number(e.target.value))}
                         required
-                        className="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded-lg text-slate-100 text-xs sm:text-sm focus:outline-none focus:border-amber-500"
+                        className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl text-slate-800 text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-amber-600 focus:bg-white"
                       >
                         {branches.map((b) => (
                           <option key={b.id} value={b.id}>
@@ -583,46 +623,46 @@ export const MemberLookup: React.FC<MemberLookupProps> = ({
                   </div>
 
                   {/* STEWARDSHIP COMMITMENTS: Monthly Dues (Compulsory) & Kingdom Investment (Optional) */}
-                  <div className="p-3.5 rounded-xl bg-slate-950 border border-slate-800 space-y-3">
+                  <div className="p-4 rounded-xl bg-slate-50 border border-slate-200 space-y-3">
                     <div className="flex items-center justify-between">
-                      <span className="font-bold text-slate-200 uppercase tracking-wider text-[11px]">
+                      <span className="font-bold text-slate-900 uppercase tracking-wider text-[11px]">
                         Stewardship Commitments
                       </span>
-                      <span className="text-[10px] text-slate-400">Choose commitments</span>
+                      <span className="text-[11px] text-slate-500">Choose commitments</span>
                     </div>
 
                     {/* 1. Monthly Dues (Compulsory) */}
-                    <div className="p-3 rounded-lg bg-slate-900 border border-amber-500/30 flex items-start gap-3">
+                    <div className="p-3.5 rounded-xl bg-white border border-amber-300/80 shadow-sm flex items-start gap-3">
                       <div className="pt-0.5">
                         <input
                           type="checkbox"
                           checked={true}
                           disabled={true}
                           readOnly
-                          className="w-4 h-4 rounded text-amber-500 bg-slate-950 border-slate-700 accent-amber-500 cursor-not-allowed"
+                          className="w-4 h-4 rounded text-amber-700 bg-slate-100 border-slate-300 accent-amber-700 cursor-not-allowed"
                         />
                       </div>
                       <div className="flex-1 space-y-1">
                         <div className="flex items-center justify-between">
-                          <label className="font-bold text-slate-100 flex items-center gap-1.5">
+                          <label className="font-bold text-slate-900 flex items-center gap-1.5">
                             <span>Monthly Membership Dues</span>
-                            <span className="px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-400 text-[10px] font-bold uppercase tracking-wider flex items-center gap-1">
-                              <Lock className="w-2.5 h-2.5" />
+                            <span className="px-2 py-0.5 rounded bg-amber-100 text-amber-900 text-[10px] font-bold uppercase tracking-wider flex items-center gap-1 border border-amber-300">
+                              <Lock className="w-2.5 h-2.5 text-amber-700" />
                               Compulsory
                             </span>
                           </label>
-                          <span className="font-mono font-bold text-amber-400">
+                          <span className="font-mono font-bold text-amber-800">
                             {selectedBranch ? `${selectedBranch.currency_symbol}${selectedBranch.default_monthly_due.toFixed(2)}/mo` : '$20.00/mo'}
                           </span>
                         </div>
-                        <p className="text-[11px] text-slate-400">
+                        <p className="text-[11px] text-slate-600">
                           Mandatory core membership contribution for church branch upkeep and pastoral administration.
                         </p>
                       </div>
                     </div>
 
                     {/* 2. Kingdom Investment (Optional) */}
-                    <div className="p-3 rounded-lg bg-slate-900 border border-slate-800 space-y-2.5">
+                    <div className="p-3.5 rounded-xl bg-white border border-slate-200 space-y-2.5">
                       <div className="flex items-start gap-3">
                         <div className="pt-0.5">
                           <input
@@ -630,27 +670,27 @@ export const MemberLookup: React.FC<MemberLookupProps> = ({
                             type="checkbox"
                             checked={hasKingdomInvestment}
                             onChange={(e) => setHasKingdomInvestment(e.target.checked)}
-                            className="w-4 h-4 rounded text-amber-500 bg-slate-950 border-slate-700 accent-amber-500 cursor-pointer"
+                            className="w-4 h-4 rounded text-amber-700 bg-slate-100 border-slate-300 accent-amber-700 cursor-pointer"
                           />
                         </div>
                         <div className="flex-1 space-y-1">
                           <div className="flex items-center justify-between">
-                            <label htmlFor="kingdom-investment-check" className="font-bold text-slate-100 cursor-pointer flex items-center gap-1.5">
+                            <label htmlFor="kingdom-investment-check" className="font-bold text-slate-900 cursor-pointer flex items-center gap-1.5">
                               <span>Kingdom Investments</span>
-                              <span className="px-1.5 py-0.5 rounded bg-slate-800 text-slate-400 text-[10px] font-semibold uppercase tracking-wider">
+                              <span className="px-2 py-0.5 rounded bg-slate-100 text-slate-700 text-[10px] font-semibold uppercase tracking-wider border border-slate-300">
                                 Optional
                               </span>
                             </label>
                           </div>
-                          <p className="text-[11px] text-slate-400">
+                          <p className="text-[11px] text-slate-600">
                             Voluntary stewardship partner contributions toward church building projects, media wings, and missions outreach.
                           </p>
                         </div>
                       </div>
 
                       {hasKingdomInvestment && (
-                        <div className="pt-2 pl-7 border-t border-slate-800/80 flex items-center gap-2">
-                          <label className="text-[11px] text-slate-300 font-semibold whitespace-nowrap">
+                        <div className="pt-2 pl-7 border-t border-slate-100 flex items-center gap-2">
+                          <label className="text-[11px] text-slate-700 font-semibold whitespace-nowrap">
                             Target Pledge ({selectedBranch ? selectedBranch.currency_symbol : '$'}):
                           </label>
                           <input
@@ -660,7 +700,7 @@ export const MemberLookup: React.FC<MemberLookupProps> = ({
                             value={kingdomInvestmentAmount}
                             onChange={(e) => setKingdomInvestmentAmount(e.target.value)}
                             placeholder="e.g. 50"
-                            className="w-28 px-2.5 py-1 bg-slate-950 border border-slate-700 rounded-lg text-slate-100 font-mono font-bold text-xs focus:outline-none focus:border-amber-500"
+                            className="w-28 px-2.5 py-1 bg-slate-50 border border-slate-300 rounded-lg text-slate-900 font-mono font-bold text-xs focus:outline-none focus:ring-2 focus:ring-amber-600 focus:bg-white"
                           />
                         </div>
                       )}
@@ -671,10 +711,10 @@ export const MemberLookup: React.FC<MemberLookupProps> = ({
                     <button
                       type="submit"
                       disabled={registering}
-                      className="w-full py-2.5 rounded-lg bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs sm:text-sm transition flex items-center justify-center gap-1.5 disabled:opacity-50"
+                      className="w-full py-3 rounded-xl bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs sm:text-sm transition flex items-center justify-center gap-1.5 shadow-sm disabled:opacity-50"
                     >
                       {registering ? (
-                        <span className="animate-spin inline-block w-4 h-4 border-2 border-slate-950 border-t-transparent rounded-full"></span>
+                        <span className="animate-spin inline-block w-4 h-4 border-2 border-white border-t-transparent rounded-full"></span>
                       ) : (
                         <>
                           <UserPlus className="w-4 h-4" />

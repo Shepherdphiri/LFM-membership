@@ -266,14 +266,14 @@ function initTablesAndSeed(db: Database) {
       INSERT INTO church_settings (id, church_name, tagline, logo_url, address, phone, email, senior_pastor, tax_id)
       VALUES (
         1,
-        'GracePoint Church',
-        'International Assemblies • Stewardship & Member Records',
+        'Living Faith Membership Portal',
+        'Living Faith International Assemblies • Stewardship & Member Records',
         '',
-        '1240 Kingdom Way, Central Cathedral Campus',
-        '+1 (555) 234-5678',
-        'office@gracepointchurch.org',
-        'Pastor David Sterling',
-        'CH-TAX-8921-EX'
+        'Living Faith Cathedral Campus, Lilongwe, Malawi',
+        '+265 99 123 4567',
+        'office@livingfaithportal.org',
+        'Senior Pastor',
+        ''
       );
     `);
   }
@@ -293,104 +293,10 @@ function initTablesAndSeed(db: Database) {
     db.run(`
       INSERT INTO branches (name, code, currency_symbol, currency_code, default_monthly_due, address)
       VALUES 
-      ('Main Sanctuary', 'MS', '$', 'USD', 25.00, '1240 Kingdom Way, Central City'),
-      ('Harare Central Assembly', 'HRE', '$', 'USD', 20.00, '45 Samora Machel Avenue, Harare'),
-      ('Johannesburg South Campus', 'JHB', 'R', 'ZAR', 350.00, '128 Rivonia Road, Sandton, JHB'),
-      ('London Praise Chapel', 'LON', '£', 'GBP', 20.00, '14 Victoria Road, London SE1');
-    `);
-  }
-
-  // Seed realistic members using Branch Codes in Member Numbers!
-  const memberCount = db.exec("SELECT COUNT(*) FROM members");
-  if (!memberCount[0]?.values[0]?.[0]) {
-    db.run(`
-      -- Member 1: Main Sanctuary (MS-1001) - Green
-      INSERT INTO members (member_number, title, first_name, surname, full_name, phone, email, branch_id, join_date, monthly_due_amount, has_monthly_dues, has_kingdom_investment, kingdom_investment_amount, status, notes)
-      VALUES ('MS-1001', 'Elder', 'Emmanuel', 'Adebayo', 'Emmanuel Adebayo', '+1 (555) 234-5678', 'emmanuel@example.com', 1, '2023-01-15', 25.00, 1, 1, 100.00, 'green', 'Choir director & elder');
-
-      -- Member 2: Harare Branch (HRE-1001) - Orange (Sept dues pending)
-      INSERT INTO members (member_number, title, first_name, surname, full_name, phone, email, branch_id, join_date, monthly_due_amount, has_monthly_dues, has_kingdom_investment, kingdom_investment_amount, status, notes)
-      VALUES ('HRE-1001', 'Sister', 'Sarah', 'Chikore', 'Sarah Chikore', '+263 77 123 4567', 'sarah.c@example.com', 2, '2024-03-10', 20.00, 1, 1, 50.00, 'orange', 'Youth ministry coordinator');
-
-      -- Member 3: Johannesburg Branch (JHB-1001) - Red (Overdue by 3 months)
-      INSERT INTO members (member_number, title, first_name, surname, full_name, phone, email, branch_id, join_date, monthly_due_amount, has_monthly_dues, has_kingdom_investment, kingdom_investment_amount, status, notes)
-      VALUES ('JHB-1001', 'Brother', 'Marcus', 'Nkosi', 'Marcus Nkosi', '+27 82 345 6789', 'marcus.n@example.com', 3, '2022-08-20', 350.00, 1, 0, 0.00, 'red', 'Account flag: 3 months dues unpaid');
-
-      -- Member 4: London Chapel (LON-1001) - Green (Up to date)
-      INSERT INTO members (member_number, title, first_name, surname, full_name, phone, email, branch_id, join_date, monthly_due_amount, has_monthly_dues, has_kingdom_investment, kingdom_investment_amount, status, notes)
-      VALUES ('LON-1001', 'Deaconess', 'Grace', 'Mwangi', 'Grace Mwangi', '+44 7911 123456', 'grace.m@example.com', 4, '2023-06-01', 20.00, 1, 1, 200.00, 'green', 'Hospitality lead');
-    `);
-
-    // Seed Contributions (Only membership_fee and kingdom_investment - NO tithe)
-    db.run(`
-      -- MS-1001 (USD $)
-      INSERT INTO contributions (member_id, category, amount, date, for_month, payment_method, receipt_no, notes)
-      VALUES 
-      (1, 'membership_fee', 25.00, '2026-09-05', '2026-09', 'Direct Bank Deposit', 'REC-2026-0902', 'September 2026 Monthly Due'),
-      (1, 'membership_fee', 25.00, '2026-08-04', '2026-08', 'Offline Cash', 'REC-2026-0802', 'August 2026 Monthly Due'),
-      (1, 'membership_fee', 25.00, '2026-07-02', '2026-07', 'Direct Bank Deposit', 'REC-2026-0702', 'July 2026 Monthly Due'),
-      (1, 'kingdom_investment', 1200.00, '2026-09-12', '2026-09', 'Offline Bank Transfer', 'REC-2026-0903', 'Sanctuary Expansion & Media Wing Project');
-
-      -- HRE-1001 (USD $) - Paid August, pending Sept
-      INSERT INTO contributions (member_id, category, amount, date, for_month, payment_method, receipt_no, notes)
-      VALUES 
-      (2, 'membership_fee', 20.00, '2026-08-08', '2026-08', 'EcoCash Mobile Money (Cash In)', 'REC-2026-0810', 'August 2026 Monthly Due'),
-      (2, 'membership_fee', 20.00, '2026-07-05', '2026-07', 'EcoCash Mobile Money', 'REC-2026-0710', 'July 2026 Monthly Due'),
-      (2, 'kingdom_investment', 150.00, '2026-07-15', '2026-07', 'Bank Deposit', 'REC-2026-0715', 'Youth Camp & Outreach Project');
-
-      -- JHB-1001 (ZAR R) - Last paid in June
-      INSERT INTO contributions (member_id, category, amount, date, for_month, payment_method, receipt_no, notes)
-      VALUES 
-      (3, 'membership_fee', 350.00, '2026-06-03', '2026-06', 'Offline Cash at Desk', 'REC-2026-0601', 'June 2026 Monthly Due');
-
-      -- LON-1001 (GBP £)
-      INSERT INTO contributions (member_id, category, amount, date, for_month, payment_method, receipt_no, notes)
-      VALUES 
-      (4, 'membership_fee', 20.00, '2026-09-02', '2026-09', 'Direct Standing Order', 'REC-2026-0915', 'September 2026 Monthly Due'),
-      (4, 'membership_fee', 20.00, '2026-08-01', '2026-08', 'Direct Standing Order', 'REC-2026-0815', 'August 2026 Monthly Due'),
-      (4, 'kingdom_investment', 1000.00, '2026-09-10', '2026-09', 'Offline Bank Wire', 'REC-2026-0917', 'Kingdom Builders Legacy Project');
-    `);
-
-    // Seed Events
-    db.run(`
-      INSERT INTO events (title, description, category, start_date, end_date, location, target_ministry)
-      VALUES 
-      (
-        'Sunday Miracle Celebration & Communion Service',
-        'Glorious Sunday morning gathering with inspirational choral praise, the uncompromised Word of Faith, and holy communion table.',
-        'service',
-        '2026-09-27 09:30',
-        '2026-09-27 12:00',
-        'All Church Sanctuaries & Live Stream',
-        'General Congregation'
-      ),
-      (
-        'Midweek Word Feast & Deep Bible Study',
-        'Expository teaching of scripture on spiritual growth, kingdom stewardship, and victorious Christian living.',
-        'service',
-        '2026-09-30 18:30',
-        '2026-09-30 20:00',
-        'Sanctuary Hall & Online Zoom',
-        'Discipleship Ministry'
-      ),
-      (
-        'Kingdom Power & Prophetic Revival Night',
-        'An explosive evening of heartfelt prayer, prophetic declarations, spiritual impartation, and breakthrough praise.',
-        'revival',
-        '2026-10-09 19:00',
-        '2026-10-09 22:30',
-        'Main Sanctuary & Regional Centers',
-        'Youth & Prayer Intercessors'
-      ),
-      (
-        'Grace Care: Community Food & Clothing Outreach',
-        'Distributing hot meals, emergency grocery hampers, and clothing to families in our local communities.',
-        'volunteer',
-        '2026-10-17 09:00',
-        '2026-10-17 14:00',
-        'Gracepoint Community Pavilion',
-        'Welfare & Missions Ministry'
-      );
+      ('Lilongwe Branch (Malawi)', 'LLW', 'MK', 'MWK', 5000.00, 'Area 47, Sector 3, Lilongwe, Malawi'),
+      ('Blantyre Branch (Malawi)', 'BT', 'MK', 'MWK', 5000.00, 'Victoria Avenue, Blantyre, Malawi'),
+      ('Nkhatabay Branch (Malawi)', 'NKB', 'MK', 'MWK', 3000.00, 'Boma Center, Nkhatabay, Malawi'),
+      ('Cape Town Branch (South Africa)', 'CPT', 'R', 'ZAR', 150.00, 'Foreshore, Cape Town, 8001, South Africa');
     `);
   }
 }
