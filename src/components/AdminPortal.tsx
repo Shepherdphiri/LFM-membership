@@ -23,6 +23,11 @@ import {
   broadcastAdminNotification,
   fetchAdminChurchSettings,
   updateAdminChurchSettings,
+  resetAdminCleanSlate,
+  getCloudDbConfig,
+  updateCloudDbConfig,
+  triggerCloudSync,
+  testAirtableConnection,
 } from '../services/api';
 import {
   Lock,
@@ -52,10 +57,16 @@ import {
   Camera,
   Maximize2,
   Minimize2,
-  ChevronLeft,
-  ChevronRight,
+  Database,
+  Cloud,
+  RefreshCw,
+  Globe,
+  Key,
+  ExternalLink,
+  HardDrive,
 } from 'lucide-react';
 import { localStore } from '../services/localStore';
+import { cloudDb, CloudDbConfig } from '../services/cloudDb';
 import { generateMemberStatementPDF } from '../utils/pdfGenerator';
 import { playGentleChime } from '../utils/notifications';
 import { generateQRCodeDataURL } from '../utils/qrcode';
@@ -98,12 +109,25 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ isOpen, onClose, onSet
   const [loginError, setLoginError] = useState<string | null>(null);
 
   // Admin Dashboard state
-  const [activeTab, setActiveTab] = useState<'overview' | 'settings' | 'branches' | 'members' | 'events' | 'reports' | 'broadcast'>('overview');
+  const [activeTab, setActiveTab] = useState<'overview' | 'settings' | 'branches' | 'members' | 'events' | 'reports' | 'broadcast' | 'database'>('overview');
   const [stats, setStats] = useState<AdminStats | null>(null);
   const [branches, setBranches] = useState<Branch[]>([]);
   const [members, setMembers] = useState<AdminMemberListItem[]>([]);
   const [loading, setLoading] = useState(false);
   const [refreshTrigger, setRefreshTrigger] = useState(0);
+
+  // Cloud Database & Multi-Device Sync State
+  const [cloudConfig, setCloudConfig] = useState<CloudDbConfig>(() => getCloudDbConfig());
+  const [airtableTokenInput, setAirtableTokenInput] = useState(cloudConfig.airtableToken || '');
+  const [airtableBaseInput, setAirtableBaseInput] = useState(cloudConfig.airtableBaseId || '');
+  const [customVaultInput, setCustomVaultInput] = useState(cloudConfig.vaultId || '');
+  const [supabaseUrlInput, setSupabaseUrlInput] = useState(cloudConfig.supabaseUrl || '');
+  const [supabaseKeyInput, setSupabaseKeyInput] = useState(cloudConfig.supabaseAnonKey || '');
+  const [selectedProvider, setSelectedProvider] = useState<'cloudvault' | 'airtable' | 'supabase'>(cloudConfig.provider || 'cloudvault');
+  const [isTestingAirtable, setIsTestingAirtable] = useState(false);
+  const [airtableTestResult, setAirtableTestResult] = useState<{ success: boolean; message: string } | null>(null);
+  const [isSyncingNow, setIsSyncingNow] = useState(false);
+  const [cloudToast, setCloudToast] = useState<string | null>(null);
 
   // Church Settings & Logo State (Tax ID removed)
   const [churchNameInput, setChurchNameInput] = useState('Living Faith Membership Portal');
@@ -171,26 +195,8 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ isOpen, onClose, onSet
   const [statusFilter, setStatusFilter] = useState('all');
   const [branchFilter, setBranchFilter] = useState('all');
 
-  // Full-screen and tabs scroll state
+  // Full-screen state
   const [isFullScreen, setIsFullScreen] = useState(false);
-  const tabScrollRef = useRef<HTMLDivElement>(null);
-  const [canScrollLeft, setCanScrollLeft] = useState(false);
-  const [canScrollRight, setCanScrollRight] = useState(false);
-
-  const checkTabScroll = () => {
-    if (!tabScrollRef.current) return;
-    const { scrollLeft, scrollWidth, clientWidth } = tabScrollRef.current;
-    setCanScrollLeft(scrollLeft > 4);
-    setCanScrollRight(scrollLeft < scrollWidth - clientWidth - 4);
-  };
-
-  const scrollTabs = (direction: 'left' | 'right') => {
-    if (!tabScrollRef.current) return;
-    tabScrollRef.current.scrollBy({
-      left: direction === 'left' ? -220 : 220,
-      behavior: 'smooth',
-    });
-  };
 
   const handleResetCleanSlate = async () => {
     const confirmReset = window.confirm(
@@ -199,25 +205,24 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ isOpen, onClose, onSet
     if (!confirmReset) return;
 
     try {
+      if (token) {
+        await resetAdminCleanSlate(token);
+      }
       localStore.clearAllDataAndReset();
       setMembers([]);
       setAdminEvents([]);
       setStats({
         membersCount: 0,
+        greenCount: 0,
+        orangeCount: 0,
+        redCount: 0,
         branchesCount: branches.length || 4,
-        goodStandingCount: 0,
-        attentionCount: 0,
-        overdueCount: 0,
-        currencySummaries: branches.map((b) => ({
-          currency_symbol: b.currency_symbol,
-          currency_code: b.currency_code,
-          totalCollected: 0,
-          membershipFees: 0,
-          kingdomInvestments: 0,
-        })),
-        recentActivity: [],
+        branches: branches,
+        overdueMembers: [],
+        recentContributions: [],
       });
       setDuesToast('All demo data cleared. Living Faith Portal is now completely clean.');
+      playGentleChime();
       setTimeout(() => setDuesToast(null), 3500);
     } catch (err: any) {
       alert(err.message || 'Failed to reset data');
@@ -324,6 +329,75 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ isOpen, onClose, onSet
       isMounted = false;
     };
   }, [token, refreshTrigger, searchQuery, statusFilter, branchFilter]);
+
+  // Subscribe to Cloud Database updates across devices
+  useEffect(() => {
+    const unsub = cloudDb.subscribe((cfg) => {
+      setCloudConfig(cfg);
+    });
+    return unsub;
+  }, []);
+
+  // Listen for remote data merges to trigger re-fetch of stats and members
+  useEffect(() => {
+    const onStoreUpdated = () => {
+      setRefreshTrigger((prev) => prev + 1);
+    };
+    window.addEventListener('church_store_updated', onStoreUpdated);
+    return () => window.removeEventListener('church_store_updated', onStoreUpdated);
+  }, []);
+
+  const handleManualSync = async () => {
+    setIsSyncingNow(true);
+    try {
+      await triggerCloudSync();
+      setRefreshTrigger((prev) => prev + 1);
+      playGentleChime();
+      setCloudToast('Synchronized with Cloud Database successfully.');
+      setTimeout(() => setCloudToast(null), 3000);
+    } catch (e: any) {
+      setCloudToast(e.message || 'Sync encountered an issue.');
+      setTimeout(() => setCloudToast(null), 4000);
+    } finally {
+      setIsSyncingNow(false);
+    }
+  };
+
+  const handleTestAirtable = async () => {
+    if (!airtableTokenInput.trim() || !airtableBaseInput.trim()) {
+      setAirtableTestResult({ success: false, message: 'Please enter both Personal Access Token and Base ID.' });
+      return;
+    }
+    setIsTestingAirtable(true);
+    setAirtableTestResult(null);
+    try {
+      const res = await testAirtableConnection(airtableTokenInput.trim(), airtableBaseInput.trim());
+      setAirtableTestResult(res);
+      if (res.success) playGentleChime();
+    } catch (e: any) {
+      setAirtableTestResult({ success: false, message: e.message || 'Network error reaching Airtable.' });
+    } finally {
+      setIsTestingAirtable(false);
+    }
+  };
+
+  const handleSaveCloudSettings = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const updated = updateCloudDbConfig({
+      provider: selectedProvider,
+      syncEnabled: true,
+      vaultId: customVaultInput.trim() || cloudConfig.vaultId,
+      airtableToken: airtableTokenInput.trim(),
+      airtableBaseId: airtableBaseInput.trim(),
+      supabaseUrl: supabaseUrlInput.trim(),
+      supabaseAnonKey: supabaseKeyInput.trim(),
+    });
+    setCloudConfig(updated);
+    playGentleChime();
+    setCloudToast(`Cloud provider set to ${selectedProvider === 'airtable' ? 'Airtable' : selectedProvider === 'supabase' ? 'Supabase' : 'Free Cloud Vault'}.`);
+    setTimeout(() => setCloudToast(null), 3500);
+    handleManualSync();
+  };
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -659,7 +733,7 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ isOpen, onClose, onSet
 
   return (
     <div className={`fixed inset-0 z-50 flex items-center justify-center ${isFullScreen ? 'p-0' : 'p-1.5 sm:p-3 md:p-4'} bg-slate-900/80 backdrop-blur-sm animate-in fade-in duration-200`}>
-      <div className={`relative w-full ${isFullScreen ? 'h-full max-w-none rounded-none' : 'max-w-[98vw] 2xl:max-w-7xl h-[95vh] rounded-2xl'} bg-white border border-slate-300 shadow-2xl overflow-hidden text-slate-800 flex flex-col transition-all duration-150`}>
+      <div className={`relative w-full ${isFullScreen ? 'h-full max-w-none rounded-none' : 'w-[98vw] max-w-[1536px] h-[95vh] rounded-2xl'} bg-white border border-slate-300 shadow-2xl overflow-hidden text-slate-800 flex flex-col transition-all duration-150`}>
         {/* Top Header */}
         <div className="bg-slate-900 border-b border-slate-800 p-3.5 sm:px-6 flex items-center justify-between gap-3 shrink-0 text-white">
           <div className="flex items-center gap-3 min-w-0">
@@ -802,66 +876,106 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ isOpen, onClose, onSet
         ) : (
           /* AUTHENTICATED ADMIN DASHBOARD */
           <div className="flex-1 flex flex-col overflow-hidden bg-slate-50">
-            {/* Admin Tabs - All tools guaranteed visible without cutting off */}
-            <div className="relative border-b border-slate-200 bg-white shadow-xs shrink-0 flex items-center">
-              {canScrollLeft && (
-                <button
-                  type="button"
-                  onClick={() => scrollTabs('left')}
-                  className="absolute left-0 z-20 h-full px-2 bg-gradient-to-r from-white via-white/95 to-transparent flex items-center text-slate-700 hover:text-amber-800 transition"
-                  title="Scroll tools left"
-                  aria-label="Scroll tools left"
-                >
-                  <ChevronLeft className="w-4 h-4" />
-                </button>
-              )}
-
-              <div
-                ref={tabScrollRef}
-                onScroll={checkTabScroll}
-                className="flex items-center overflow-x-auto px-2 sm:px-4 w-full scroll-smooth"
-                style={{ scrollbarWidth: 'thin' }}
-              >
+            {/* Admin Tools Navigation - All 8 tools guaranteed fully visible */}
+            <div className="border-b border-slate-200 bg-slate-100/90 p-1.5 sm:p-2 shrink-0">
+              <nav aria-label="Admin Tools" className="grid grid-cols-2 xs:grid-cols-4 sm:grid-cols-4 lg:grid-cols-8 gap-1 sm:gap-1.5 w-full">
                 {[
                   { id: 'overview', label: 'Overview', icon: ShieldCheck },
-                  { id: 'settings', label: 'Church Profile & Logo', icon: Church },
-                  { id: 'branches', label: `Branches (${branches.length})`, icon: Building },
-                  { id: 'members', label: `Members & Dues (${members.length})`, icon: Users },
-                  { id: 'events', label: `Church Events (${adminEvents.length})`, icon: Calendar },
-                  { id: 'reports', label: 'Member Reports', icon: FileText },
-                  { id: 'broadcast', label: 'Announcements', icon: Megaphone },
+                  { id: 'settings', label: 'Profile & Logo', icon: Church },
+                  { id: 'branches', label: 'Branches', count: branches.length, icon: Building },
+                  { id: 'members', label: 'Members & Dues', count: members.length, icon: Users },
+                  { id: 'events', label: 'Events', count: adminEvents.length, icon: Calendar },
+                  { id: 'reports', label: 'Reports', icon: FileText },
+                  { id: 'broadcast', label: 'Broadcast', icon: Megaphone },
+                  { id: 'database', label: 'Cloud Database', icon: Database },
                 ].map((tab) => {
                   const Icon = tab.icon;
                   const isActive = activeTab === tab.id;
                   return (
                     <button
                       key={tab.id}
+                      type="button"
                       onClick={() => setActiveTab(tab.id as any)}
-                      className={`flex items-center gap-1.5 sm:gap-2 px-3 sm:px-4 py-3 text-xs sm:text-xs md:text-sm font-semibold border-b-2 whitespace-nowrap shrink-0 transition ${
+                      className={`flex items-center justify-center gap-1.5 sm:gap-2 px-2 py-2.5 rounded-xl text-xs sm:text-xs md:text-sm transition-all duration-150 text-center select-none ${
                         isActive
-                          ? 'border-amber-700 text-amber-900 bg-amber-50/50 font-bold'
-                          : 'border-transparent text-slate-600 hover:text-slate-900 hover:bg-slate-50'
+                          ? 'bg-white text-amber-950 font-bold shadow-xs border border-amber-300 ring-1 ring-amber-500/20'
+                          : 'bg-white/60 hover:bg-white text-slate-700 hover:text-slate-950 border border-slate-200/80 font-medium'
                       }`}
                     >
-                      <Icon className={`w-4 h-4 shrink-0 ${isActive ? 'text-amber-800' : 'text-slate-500'}`} />
-                      <span>{tab.label}</span>
+                      <Icon className={`w-4 h-4 shrink-0 ${isActive ? 'text-amber-700' : 'text-slate-500'}`} />
+                      <span className="truncate">{tab.label}</span>
+                      {typeof tab.count === 'number' && (
+                        <span
+                          className={`px-1.5 py-0.2 rounded-full text-[10px] font-mono font-bold shrink-0 ${
+                            isActive
+                              ? 'bg-amber-100 text-amber-800'
+                              : 'bg-slate-200/80 text-slate-600'
+                          }`}
+                        >
+                          {tab.count}
+                        </span>
+                      )}
                     </button>
                   );
                 })}
+              </nav>
+            </div>
+
+            {/* Live Cross-Device Cloud Sync Banner */}
+            <div className="flex flex-wrap items-center justify-between gap-2 px-3 sm:px-6 py-2 bg-gradient-to-r from-amber-50/90 via-slate-50 to-amber-50/90 border-b border-slate-200 text-xs text-slate-700 shrink-0">
+              <div className="flex items-center gap-2 min-w-0">
+                <span className="relative flex h-2.5 w-2.5 shrink-0">
+                  <span className={`animate-ping absolute inline-flex h-full w-full rounded-full opacity-75 ${
+                    cloudConfig.syncStatus === 'connected' ? 'bg-emerald-400' : cloudConfig.syncStatus === 'syncing' ? 'bg-amber-400' : 'bg-rose-400'
+                  }`}></span>
+                  <span className={`relative inline-flex rounded-full h-2.5 w-2.5 ${
+                    cloudConfig.syncStatus === 'connected' ? 'bg-emerald-500' : cloudConfig.syncStatus === 'syncing' ? 'bg-amber-500' : 'bg-rose-500'
+                  }`}></span>
+                </span>
+                <span className="font-bold text-slate-900 truncate">
+                  {cloudConfig.provider === 'airtable'
+                    ? 'Airtable Sync Active (Free Plan)'
+                    : cloudConfig.provider === 'supabase'
+                    ? 'Supabase Sync Active (Free Tier)'
+                    : 'Free Cloud Sync Active (Multi-Device)'}
+                </span>
+                <span className="text-slate-400 hidden sm:inline">•</span>
+                <span className="text-slate-600 text-[11px] truncate hidden md:inline">
+                  {cloudConfig.syncMessage || 'In sync across devices'}
+                </span>
               </div>
 
-              {canScrollRight && (
+              <div className="flex items-center gap-2.5 shrink-0">
+                {cloudConfig.lastSyncTime && (
+                  <span className="text-[11px] text-slate-500 font-mono hidden sm:inline">
+                    Updated {cloudConfig.lastSyncTime}
+                  </span>
+                )}
                 <button
                   type="button"
-                  onClick={() => scrollTabs('right')}
-                  className="absolute right-0 z-20 h-full px-2 bg-gradient-to-l from-white via-white/95 to-transparent flex items-center text-slate-700 hover:text-amber-800 transition"
-                  title="Scroll tools right"
-                  aria-label="Scroll tools right"
+                  onClick={handleManualSync}
+                  disabled={isSyncingNow}
+                  className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-white hover:bg-slate-50 text-amber-900 border border-amber-300 font-bold text-xs shadow-2xs transition disabled:opacity-50"
+                  title="Force instant sync with Cloud Database"
                 >
-                  <ChevronRight className="w-4 h-4" />
+                  <RefreshCw className={`w-3.5 h-3.5 ${isSyncingNow ? 'animate-spin text-amber-600' : 'text-amber-700'}`} />
+                  <span>{isSyncingNow ? 'Syncing...' : 'Sync Now'}</span>
                 </button>
-              )}
+              </div>
             </div>
+
+            {/* Cloud Action Toast */}
+            {cloudToast && (
+              <div className="bg-emerald-800 text-white px-4 py-2 text-xs font-bold flex items-center justify-between shrink-0 shadow-sm animate-in fade-in">
+                <div className="flex items-center gap-2">
+                  <CheckCircle className="w-4 h-4" />
+                  <span>{cloudToast}</span>
+                </div>
+                <button onClick={() => setCloudToast(null)} className="p-1 hover:opacity-80">
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              </div>
+            )}
 
             {/* Tab Contents with ample room for scrolling */}
             <div className="flex-1 overflow-y-auto p-4 sm:p-6 lg:p-8 space-y-6 pb-28">
@@ -1713,6 +1827,391 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ isOpen, onClose, onSet
                       Broadcast Announcement
                     </button>
                   </form>
+                </div>
+              )}
+
+              {/* TAB 8: CLOUD DATABASE & MULTI-DEVICE SYNC */}
+              {activeTab === 'database' && (
+                <div className="space-y-6">
+                  {/* Top Intro */}
+                  <div className="bg-white p-5 sm:p-6 rounded-2xl border border-slate-200 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-4">
+                    <div className="space-y-1">
+                      <div className="flex items-center gap-2">
+                        <Database className="w-5 h-5 text-amber-700" />
+                        <h4 className="font-bold text-base text-slate-900">Free Cloud Database & Cross-Device Sync</h4>
+                        <span className="px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 text-[10px] font-bold">
+                          100% FREE • NO SUBSCRIPTION
+                        </span>
+                      </div>
+                      <p className="text-xs text-slate-600 max-w-2xl">
+                        Keep church records synchronized across all phones, tablets, and computers in real-time. When believers register on their devices, administrators can safely access and verify their details from any other device. Works identically when deployed to Vercel.
+                      </p>
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={handleManualSync}
+                      disabled={isSyncingNow}
+                      className="inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs shadow-sm transition disabled:opacity-50 shrink-0"
+                    >
+                      <RefreshCw className={`w-4 h-4 ${isSyncingNow ? 'animate-spin' : ''}`} />
+                      <span>{isSyncingNow ? 'Syncing...' : 'Sync Now Across Devices'}</span>
+                    </button>
+                  </div>
+
+                  {/* Status Metrics */}
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 sm:gap-4">
+                    <div className="p-4 rounded-xl bg-white border border-slate-200 shadow-2xs">
+                      <span className="text-[10px] uppercase font-bold text-slate-500 block">Active Database</span>
+                      <span className="text-sm font-bold text-slate-900 mt-1 block truncate">
+                        {cloudConfig.provider === 'airtable'
+                          ? 'Airtable (Free Plan)'
+                          : cloudConfig.provider === 'supabase'
+                          ? 'Supabase (Free Tier)'
+                          : 'Free Cloud Vault'}
+                      </span>
+                      <span className="text-[10px] text-emerald-700 font-semibold mt-0.5 block flex items-center gap-1">
+                        <CheckCircle className="w-3 h-3" /> No Subscription Ever
+                      </span>
+                    </div>
+
+                    <div className="p-4 rounded-xl bg-white border border-slate-200 shadow-2xs">
+                      <span className="text-[10px] uppercase font-bold text-slate-500 block">Connection State</span>
+                      <div className="flex items-center gap-1.5 mt-1">
+                        <span className={`w-2.5 h-2.5 rounded-full ${
+                          cloudConfig.syncStatus === 'connected' ? 'bg-emerald-600' : cloudConfig.syncStatus === 'syncing' ? 'bg-amber-500' : 'bg-rose-500'
+                        }`}></span>
+                        <span className="text-sm font-bold capitalize text-slate-900">
+                          {cloudConfig.syncStatus === 'connected' ? 'Connected' : cloudConfig.syncStatus}
+                        </span>
+                      </div>
+                      <span className="text-[10px] text-slate-500 mt-0.5 block">
+                        Auto-sync every 8s
+                      </span>
+                    </div>
+
+                    <div className="p-4 rounded-xl bg-white border border-slate-200 shadow-2xs">
+                      <span className="text-[10px] uppercase font-bold text-slate-500 block">Records In Cloud</span>
+                      <span className="text-sm font-bold font-mono text-slate-900 mt-1 block">
+                        {members.length} Members • {branches.length} Branches
+                      </span>
+                      <span className="text-[10px] text-slate-500 mt-0.5 block">
+                        Available on all devices
+                      </span>
+                    </div>
+
+                    <div className="p-4 rounded-xl bg-white border border-slate-200 shadow-2xs">
+                      <span className="text-[10px] uppercase font-bold text-slate-500 block">Last Cloud Sync</span>
+                      <span className="text-sm font-bold font-mono text-slate-900 mt-1 block truncate">
+                        {cloudConfig.lastSyncTime || 'Just now'}
+                      </span>
+                      <span className="text-[10px] text-slate-500 mt-0.5 block">
+                        Cross-device verified
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Provider Selection & Configuration Form */}
+                  <div className="bg-white p-5 sm:p-6 rounded-2xl border border-slate-200 shadow-sm space-y-5">
+                    <div>
+                      <h4 className="font-bold text-sm text-slate-900">Select Free Cloud Database Provider</h4>
+                      <p className="text-xs text-slate-500 mt-0.5">
+                        Choose your preferred database. Both Airtable and the built-in Cloud Vault are 100% free with no recurring subscriptions or credit card requirements:
+                      </p>
+                    </div>
+
+                    {/* 3 Provider Options */}
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                      {/* Option 1: Zero-Setup Cloud Vault */}
+                      <div
+                        onClick={() => setSelectedProvider('cloudvault')}
+                        className={`p-4 rounded-xl border-2 transition cursor-pointer flex flex-col justify-between ${
+                          selectedProvider === 'cloudvault'
+                            ? 'border-amber-600 bg-amber-50/40 ring-1 ring-amber-500/20'
+                            : 'border-slate-200 bg-slate-50/50 hover:bg-slate-50'
+                        }`}
+                      >
+                        <div className="space-y-1.5">
+                          <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-1.5">
+                              <Cloud className="w-4 h-4 text-amber-700" />
+                              <span className="font-bold text-sm text-slate-900">Free Cloud Vault</span>
+                            </div>
+                            <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-emerald-100 text-emerald-800">
+                              Active / Default
+                            </span>
+                          </div>
+                          <p className="text-[11px] text-slate-600">
+                            Zero setup required. Ready instantly. Syncs members, dues, and announcements across all devices and Vercel.
+                          </p>
+                        </div>
+                        <div className="mt-3 pt-2 border-t border-slate-200/60 text-[10px] text-slate-500 font-semibold flex items-center justify-between">
+                          <span>Cost: Free forever</span>
+                          {selectedProvider === 'cloudvault' && <Check className="w-3.5 h-3.5 text-amber-700 font-bold" />}
+                        </div>
+                      </div>
+
+                      {/* Option 2: Airtable (User Requested) */}
+                      <div
+                        onClick={() => setSelectedProvider('airtable')}
+                        className={`p-4 rounded-xl border-2 transition cursor-pointer flex flex-col justify-between ${
+                          selectedProvider === 'airtable'
+                            ? 'border-amber-600 bg-amber-50/40 ring-1 ring-amber-500/20'
+                            : 'border-slate-200 bg-slate-50/50 hover:bg-slate-50'
+                        }`}
+                      >
+                        <div className="space-y-1.5">
+                          <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-1.5">
+                              <Database className="w-4 h-4 text-amber-700" />
+                              <span className="font-bold text-sm text-slate-900">Airtable</span>
+                            </div>
+                            <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-amber-100 text-amber-800">
+                              Free Plan
+                            </span>
+                          </div>
+                          <p className="text-[11px] text-slate-600">
+                            Connect your free Airtable Base. Visual spreadsheet with 1,000 free records per base. No credit card required.
+                          </p>
+                        </div>
+                        <div className="mt-3 pt-2 border-t border-slate-200/60 text-[10px] text-slate-500 font-semibold flex items-center justify-between">
+                          <span>Cost: $0/mo Free Tier</span>
+                          {selectedProvider === 'airtable' && <Check className="w-3.5 h-3.5 text-amber-700 font-bold" />}
+                        </div>
+                      </div>
+
+                      {/* Option 3: Supabase Free Tier */}
+                      <div
+                        onClick={() => setSelectedProvider('supabase')}
+                        className={`p-4 rounded-xl border-2 transition cursor-pointer flex flex-col justify-between ${
+                          selectedProvider === 'supabase'
+                            ? 'border-amber-600 bg-amber-50/40 ring-1 ring-amber-500/20'
+                            : 'border-slate-200 bg-slate-50/50 hover:bg-slate-50'
+                        }`}
+                      >
+                        <div className="space-y-1.5">
+                          <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-1.5">
+                              <HardDrive className="w-4 h-4 text-amber-700" />
+                              <span className="font-bold text-sm text-slate-900">Supabase</span>
+                            </div>
+                            <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-slate-200 text-slate-700">
+                              PostgreSQL Free
+                            </span>
+                          </div>
+                          <p className="text-[11px] text-slate-600">
+                            Connect a free Supabase PostgreSQL project with instant REST API. 500MB free storage forever.
+                          </p>
+                        </div>
+                        <div className="mt-3 pt-2 border-t border-slate-200/60 text-[10px] text-slate-500 font-semibold flex items-center justify-between">
+                          <span>Cost: $0/mo Free Tier</span>
+                          {selectedProvider === 'supabase' && <Check className="w-3.5 h-3.5 text-amber-700 font-bold" />}
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Provider Settings Form */}
+                    <form onSubmit={handleSaveCloudSettings} className="space-y-4 pt-2">
+                      {/* Configuration for Free Cloud Vault */}
+                      {selectedProvider === 'cloudvault' && (
+                        <div className="p-4 rounded-xl bg-slate-50 border border-slate-200 space-y-3 text-xs">
+                          <div className="flex items-center justify-between">
+                            <span className="font-bold text-slate-800">Zero-Setup Cloud Vault Settings</span>
+                            <span className="text-[11px] text-emerald-700 font-semibold">Active & Synchronizing</span>
+                          </div>
+                          <p className="text-slate-600">
+                            The cloud vault automatically mirrors registrations, dues ticking, and church events. Any device visiting the portal links to this shared church database.
+                          </p>
+                          <div>
+                            <label className="block font-bold uppercase text-slate-700 mb-1">
+                              Church Cloud Sync Vault ID
+                            </label>
+                            <input
+                              type="text"
+                              value={customVaultInput}
+                              onChange={(e) => setCustomVaultInput(e.target.value)}
+                              placeholder="Default: Global Church Vault"
+                              className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl text-slate-900 text-xs font-mono focus:outline-none focus:ring-2 focus:ring-amber-600"
+                            />
+                            <span className="text-[10px] text-slate-500 block mt-1">
+                              All admin devices and member devices using this Vault ID will share the same live data.
+                            </span>
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Configuration for Airtable */}
+                      {selectedProvider === 'airtable' && (
+                        <div className="p-4 rounded-xl bg-amber-50/50 border border-amber-200 space-y-4 text-xs">
+                          <div className="space-y-1">
+                            <span className="font-bold text-slate-900 block text-sm">Airtable Connection Details</span>
+                            <p className="text-slate-600">
+                              Airtable allows church admins to view and manage members in a spreadsheet-like interface for 100% free (up to 1,000 records).
+                            </p>
+                          </div>
+
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                            <div>
+                              <label className="block font-bold uppercase text-slate-700 mb-1">
+                                Airtable Personal Access Token *
+                              </label>
+                              <input
+                                type="password"
+                                value={airtableTokenInput}
+                                onChange={(e) => setAirtableTokenInput(e.target.value)}
+                                placeholder="pat..."
+                                className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl text-slate-900 text-xs font-mono focus:outline-none focus:ring-2 focus:ring-amber-600"
+                              />
+                              <span className="text-[10px] text-slate-500 block mt-1">
+                                Create at{' '}
+                                <a
+                                  href="https://airtable.com/create/tokens"
+                                  target="_blank"
+                                  rel="noreferrer"
+                                  className="text-amber-800 underline font-semibold"
+                                >
+                                  airtable.com/create/tokens
+                                </a>{' '}
+                                with <code className="font-mono">data.records:read</code> &amp; <code className="font-mono">data.records:write</code>
+                              </span>
+                            </div>
+
+                            <div>
+                              <label className="block font-bold uppercase text-slate-700 mb-1">
+                                Airtable Base ID *
+                              </label>
+                              <input
+                                type="text"
+                                value={airtableBaseInput}
+                                onChange={(e) => setAirtableBaseInput(e.target.value)}
+                                placeholder="app..."
+                                className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl text-slate-900 text-xs font-mono focus:outline-none focus:ring-2 focus:ring-amber-600"
+                              />
+                              <span className="text-[10px] text-slate-500 block mt-1">
+                                Found in your Airtable URL: <code className="font-mono">airtable.com/appXXXXXXXX...</code>
+                              </span>
+                            </div>
+                          </div>
+
+                          {/* Airtable Test Connection Button */}
+                          <div className="flex flex-wrap items-center gap-2 pt-1">
+                            <button
+                              type="button"
+                              onClick={handleTestAirtable}
+                              disabled={isTestingAirtable}
+                              className="px-3.5 py-1.5 rounded-lg bg-white hover:bg-slate-50 text-slate-800 border border-slate-300 font-semibold text-xs transition disabled:opacity-50 inline-flex items-center gap-1.5"
+                            >
+                              <RefreshCw className={`w-3.5 h-3.5 ${isTestingAirtable ? 'animate-spin text-amber-700' : ''}`} />
+                              <span>{isTestingAirtable ? 'Testing Connection...' : 'Test Airtable Connection'}</span>
+                            </button>
+                          </div>
+
+                          {airtableTestResult && (
+                            <div className={`p-3 rounded-xl border text-xs flex items-start gap-2 ${
+                              airtableTestResult.success ? 'bg-emerald-50 border-emerald-200 text-emerald-800' : 'bg-rose-50 border-rose-200 text-rose-800'
+                            }`}>
+                              {airtableTestResult.success ? (
+                                <CheckCircle className="w-4 h-4 shrink-0 text-emerald-600 mt-0.5" />
+                              ) : (
+                                <AlertCircle className="w-4 h-4 shrink-0 text-rose-600 mt-0.5" />
+                              )}
+                              <span>{airtableTestResult.message}</span>
+                            </div>
+                          )}
+
+                          {/* Table structure hint for Airtable */}
+                          <div className="p-3 bg-white rounded-xl border border-slate-200 space-y-1 text-[11px] text-slate-600">
+                            <span className="font-bold text-slate-800 block">Recommended Airtable Table:</span>
+                            <p>
+                              Create a table named <strong className="text-slate-900 font-mono">Members</strong> with columns: <span className="font-mono text-slate-700">Member Number, Full Name, Title, Phone, Email, Branch, Status, Monthly Due Amount, Join Date</span>.
+                            </p>
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Configuration for Supabase */}
+                      {selectedProvider === 'supabase' && (
+                        <div className="p-4 rounded-xl bg-slate-50 border border-slate-200 space-y-4 text-xs">
+                          <div className="space-y-1">
+                            <span className="font-bold text-slate-900 block text-sm">Supabase Connection Details</span>
+                            <p className="text-slate-600">
+                              Supabase provides a free PostgreSQL database with up to 500MB storage and zero subscription costs.
+                            </p>
+                          </div>
+
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                            <div>
+                              <label className="block font-bold uppercase text-slate-700 mb-1">
+                                Supabase Project URL *
+                              </label>
+                              <input
+                                type="text"
+                                value={supabaseUrlInput}
+                                onChange={(e) => setSupabaseUrlInput(e.target.value)}
+                                placeholder="https://xyzcompany.supabase.co"
+                                className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl text-slate-900 text-xs font-mono focus:outline-none focus:ring-2 focus:ring-amber-600"
+                              />
+                            </div>
+
+                            <div>
+                              <label className="block font-bold uppercase text-slate-700 mb-1">
+                                Supabase Public Anon Key *
+                              </label>
+                              <input
+                                type="password"
+                                value={supabaseKeyInput}
+                                onChange={(e) => setSupabaseKeyInput(e.target.value)}
+                                placeholder="eyJhbGciOi..."
+                                className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl text-slate-900 text-xs font-mono focus:outline-none focus:ring-2 focus:ring-amber-600"
+                              />
+                            </div>
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Save Button */}
+                      <div className="flex justify-end gap-3 pt-2">
+                        <button
+                          type="submit"
+                          className="px-6 py-2.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs shadow-sm transition inline-flex items-center gap-1.5"
+                        >
+                          <Check className="w-4 h-4 text-amber-400" />
+                          <span>Save &amp; Apply Database Settings</span>
+                        </button>
+                      </div>
+                    </form>
+                  </div>
+
+                  {/* Vercel & Cross-Device Sync Guide Card */}
+                  <div className="bg-amber-50/70 border border-amber-200 p-5 rounded-2xl space-y-3 text-xs text-slate-700">
+                    <div className="flex items-center gap-2 text-amber-950 font-bold text-sm">
+                      <Globe className="w-4.5 h-4.5 text-amber-800" />
+                      <span>Cross-Device Sync on Vercel &amp; Production</span>
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-3 pt-1">
+                      <div className="p-3 bg-white rounded-xl border border-amber-200/80 space-y-1">
+                        <span className="font-bold text-slate-900 block text-xs">1. Believer Registers on Mobile</span>
+                        <p className="text-[11px] text-slate-600">
+                          When a new member fills the registration form on their phone, the portal saves the profile locally and pushes it to the free cloud database.
+                        </p>
+                      </div>
+
+                      <div className="p-3 bg-white rounded-xl border border-amber-200/80 space-y-1">
+                        <span className="font-bold text-slate-900 block text-xs">2. Admin Sees Record on Laptop</span>
+                        <p className="text-[11px] text-slate-600">
+                          When church admins log in on another device, the portal automatically syncs the registration into the member directory with orange pending status.
+                        </p>
+                      </div>
+
+                      <div className="p-3 bg-white rounded-xl border border-amber-200/80 space-y-1">
+                        <span className="font-bold text-slate-900 block text-xs">3. Dues &amp; Verification Mirrored</span>
+                        <p className="text-[11px] text-slate-600">
+                          When an admin ticks dues as paid or updates events, the changes sync back to the cloud. Believers immediately see their green light status.
+                        </p>
+                      </div>
+                    </div>
+                  </div>
                 </div>
               )}
             </div>

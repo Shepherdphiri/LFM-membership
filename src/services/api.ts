@@ -351,3 +351,42 @@ export async function updateAdminChurchSettings(
     return { success: true, settings: updated, message: 'Church details & branding updated successfully.' };
   });
 }
+
+export async function resetAdminCleanSlate(
+  token: string
+): Promise<{ success: boolean; message: string }> {
+  return callApi(
+    '/admin/reset-clean',
+    {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${token}`,
+      },
+    },
+    () => {
+      localStore.clearAllDataAndReset();
+      return { success: true, message: 'All demo data cleared. Clean slate initialized.' };
+    }
+  );
+}
+
+// --- CLOUD DATABASE & MULTI-DEVICE SYNC ---
+
+export function getCloudDbConfig() {
+  return localStore.getCloudDbConfig();
+}
+
+export function updateCloudDbConfig(partial: any) {
+  return localStore.updateCloudDbConfig(partial);
+}
+
+export async function triggerCloudSync(): Promise<boolean> {
+  return localStore.syncWithCloud();
+}
+
+export async function testAirtableConnection(token: string, baseId: string) {
+  return localStore.testAirtable(token, baseId);
+}
+
+

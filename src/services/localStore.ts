@@ -10,6 +10,7 @@ import {
   AdminMemberListItem,
   TrafficLightStatus,
 } from '../types';
+import { cloudDb, CloudDbConfig, SyncPayload } from './cloudDb';
 
 export const ADMIN_TOKEN = 'grace-admin-secure-token-2026-auth';
 
@@ -28,7 +29,7 @@ interface LocalDatabase {
   };
 }
 
-const STORAGE_KEY = 'living_faith_clean_portal_v4';
+const STORAGE_KEY = 'living_faith_clean_v5';
 
 const INITIAL_BRANCHES: Branch[] = [
   {
@@ -99,11 +100,24 @@ class LocalChurchStore {
 
   constructor() {
     this.db = this.load();
+
+    // Listen for real-time remote updates from the free Cloud Database
+    cloudDb.onRemoteDataReceived((remoteData) => {
+      this.mergeRemoteData(remoteData);
+    });
+
+    // Initial pull from cloud so data synced on another device is immediately loaded
+    if (typeof window !== 'undefined') {
+      setTimeout(() => {
+        cloudDb.pullFromCloud().catch(() => {});
+      }, 200);
+    }
   }
 
   private load(): LocalDatabase {
     // Clear old test caches from earlier sessions
     try {
+      localStorage.removeItem('living_faith_clean_portal_v4');
       localStorage.removeItem('living_faith_church_store_v2');
       localStorage.removeItem('living_faith_portal_clean_v3');
       localStorage.removeItem('grace_church_db_v2');
@@ -137,7 +151,7 @@ class LocalChurchStore {
           modified = true;
         }
         if (modified) {
-          this.save(parsed);
+          this.save(parsed, true);
         }
         return parsed;
       }
@@ -159,7 +173,7 @@ class LocalChurchStore {
         name: 'Senior Pastor',
       },
     };
-    this.save(defaultDb);
+    this.save(defaultDb, true);
     return defaultDb;
   }
 
@@ -176,10 +190,97 @@ class LocalChurchStore {
     this.save();
   }
 
-  private save(data?: LocalDatabase) {
+  public mergeRemoteData(remote: SyncPayload) {
+    let hasChanges = false;
+
+    // 1. Merge members
+    if (Array.isArray(remote.members)) {
+      for (const remoteMember of remote.members) {
+        if (!remoteMember || !remoteMember.member_number) continue;
+        const cleanNum = remoteMember.member_number.trim().toUpperCase();
+        const existingIdx = this.db.members.findIndex(
+          (m) => m.member_number.trim().toUpperCase() === cleanNum
+        );
+        if (existingIdx === -1) {
+          this.db.members.push(remoteMember);
+          hasChanges = true;
+        } else {
+          const local = this.db.members[existingIdx];
+          if (
+            local.status !== remoteMember.status ||
+            local.phone !== remoteMember.phone ||
+            local.full_name !== remoteMember.full_name ||
+            local.monthly_due_amount !== remoteMember.monthly_due_amount
+          ) {
+            this.db.members[existingIdx] = { ...local, ...remoteMember };
+            hasChanges = true;
+          }
+        }
+      }
+    }
+
+    // 2. Merge contributions
+    if (Array.isArray(remote.contributions)) {
+      for (const remoteContrib of remote.contributions) {
+        if (!remoteContrib || !remoteContrib.receipt_no) continue;
+        const exists = this.db.contributions.some(
+          (c) => c.receipt_no === remoteContrib.receipt_no ||
+                 (c.member_id === remoteContrib.member_id && c.for_month === remoteContrib.for_month && c.category === remoteContrib.category)
+        );
+        if (!exists) {
+          this.db.contributions.push(remoteContrib);
+          hasChanges = true;
+        }
+      }
+    }
+
+    // 3. Merge events
+    if (Array.isArray(remote.events)) {
+      for (const remoteEvent of remote.events) {
+        if (!remoteEvent || !remoteEvent.title) continue;
+        const exists = this.db.events.some(
+          (e) => e.title === remoteEvent.title && e.start_date === remoteEvent.start_date
+        );
+        if (!exists) {
+          this.db.events.push(remoteEvent);
+          hasChanges = true;
+        }
+      }
+    }
+
+    // 4. Merge settings
+    if (remote.settings && remote.settings.church_name) {
+      if (!this.db.settings || !this.db.settings.updated_at || (remote.settings.updated_at && remote.settings.updated_at >= this.db.settings.updated_at)) {
+        this.db.settings = { ...this.db.settings, ...remote.settings };
+        hasChanges = true;
+      }
+    }
+
+    if (hasChanges) {
+      this.save(this.db, true);
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('church_store_updated'));
+      }
+    }
+  }
+
+  private save(data?: LocalDatabase, skipCloudPush = false) {
     try {
       const toSave = data || this.db;
       localStorage.setItem(STORAGE_KEY, JSON.stringify(toSave));
+
+      if (!skipCloudPush) {
+        cloudDb.pushToCloud({
+          branches: toSave.branches,
+          members: toSave.members,
+          contributions: toSave.contributions,
+          events: toSave.events,
+          notifications: toSave.notifications,
+          settings: toSave.settings,
+        }).catch((err) => {
+          console.warn('Background Cloud push warning:', err);
+        });
+      }
     } catch (e) {
       console.warn('Failed to persist local store to localStorage:', e);
     }
@@ -779,6 +880,48 @@ class LocalChurchStore {
     this.db.notifications.unshift(newNotif);
     this.save();
     return { success: true, notification: newNotif };
+  }
+
+  // --- CLOUD DATABASE SYNC CONTROLS ---
+  public async syncWithCloud(): Promise<boolean> {
+    const payload = await cloudDb.pullFromCloud();
+    if (payload) {
+      this.mergeRemoteData(payload);
+      return true;
+    }
+    // Also push current state up to ensure parity
+    await cloudDb.pushToCloud({
+      branches: this.db.branches,
+      members: this.db.members,
+      contributions: this.db.contributions,
+      events: this.db.events,
+      notifications: this.db.notifications,
+      settings: this.db.settings,
+    });
+    return true;
+  }
+
+  public getCloudDbConfig(): CloudDbConfig {
+    return cloudDb.getConfig();
+  }
+
+  public updateCloudDbConfig(partial: Partial<CloudDbConfig>): CloudDbConfig {
+    const updated = cloudDb.saveConfig(partial);
+    if (updated.syncEnabled) {
+      cloudDb.pushToCloud({
+        branches: this.db.branches,
+        members: this.db.members,
+        contributions: this.db.contributions,
+        events: this.db.events,
+        notifications: this.db.notifications,
+        settings: this.db.settings,
+      }).catch(() => {});
+    }
+    return updated;
+  }
+
+  public async testAirtable(token: string, baseId: string) {
+    return cloudDb.testAirtableConnection(token, baseId);
   }
 }
 

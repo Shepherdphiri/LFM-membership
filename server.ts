@@ -773,6 +773,119 @@ app.post('/api/admin/notifications/broadcast', requireAdmin, async (req, res) =>
   }
 });
 
+// Admin Reset Clean Slate (removes all demo members, contributions, dues records, events, announcements)
+app.post('/api/admin/reset-clean', requireAdmin, async (req, res) => {
+  try {
+    await runExec(`DELETE FROM contributions`);
+    await runExec(`DELETE FROM member_dues_months`);
+    await runExec(`DELETE FROM notifications`);
+    await runExec(`DELETE FROM events`);
+    await runExec(`DELETE FROM members`);
+    res.json({ success: true, message: 'All demo data cleared. Clean slate initialized.' });
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to reset clean slate' });
+  }
+});
+
+// ==========================================
+// CLOUD DATABASE SYNC ENDPOINTS
+// ==========================================
+
+// Pull all records from SQLite for client synchronization
+app.get('/api/cloud-sync/pull', async (req, res) => {
+  try {
+    const branches = await queryAll<Branch>(`SELECT * FROM branches ORDER BY name ASC`);
+    const members = await queryAll<any>(`
+      SELECT m.*, b.name as branch_name, b.code as branch_code, b.currency_symbol, b.currency_code
+      FROM members m
+      JOIN branches b ON m.branch_id = b.id
+      ORDER BY m.id ASC
+    `);
+    const contributions = await queryAll<Contribution>(`SELECT * FROM contributions ORDER BY id ASC`);
+    const events = await queryAll<ChurchEvent>(`SELECT * FROM events ORDER BY id ASC`);
+    const settings = await queryOne<ChurchSettings>(`SELECT * FROM church_settings WHERE id = 1`);
+
+    res.json({
+      branches,
+      members,
+      contributions,
+      events,
+      settings: settings || undefined,
+      updatedAt: new Date().toISOString(),
+    });
+  } catch (err) {
+    console.error('Error pulling cloud sync records:', err);
+    res.status(500).json({ error: 'Failed to pull cloud sync records' });
+  }
+});
+
+// Push client records to SQLite for parity
+app.post('/api/cloud-sync/push', async (req, res) => {
+  try {
+    const { members, contributions, events } = req.body;
+
+    if (Array.isArray(members)) {
+      for (const m of members) {
+        if (!m.member_number) continue;
+        const exists = await queryOne(`SELECT id FROM members WHERE UPPER(member_number) = ?`, [m.member_number.toUpperCase()]);
+        if (!exists) {
+          await runExec(
+            `INSERT INTO members (
+              member_number, title, first_name, surname, full_name, phone, email, photo_url,
+              branch_id, join_date, monthly_due_amount, has_monthly_dues, has_kingdom_investment, kingdom_investment_amount, status
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+            [
+              m.member_number,
+              m.title || 'Brother',
+              m.first_name || '',
+              m.surname || '',
+              m.full_name || `${m.first_name || ''} ${m.surname || ''}`.trim(),
+              m.phone || '',
+              m.email || '',
+              m.photo_url || '',
+              m.branch_id || 1,
+              m.join_date || new Date().toISOString().split('T')[0],
+              m.monthly_due_amount || 20,
+              m.has_monthly_dues ? 1 : 0,
+              m.has_kingdom_investment ? 1 : 0,
+              m.kingdom_investment_amount || 0,
+              m.status || 'orange',
+            ]
+          );
+        }
+      }
+    }
+
+    if (Array.isArray(contributions)) {
+      for (const c of contributions) {
+        if (!c.receipt_no) continue;
+        const exists = await queryOne(`SELECT id FROM contributions WHERE receipt_no = ?`, [c.receipt_no]);
+        if (!exists) {
+          await runExec(
+            `INSERT INTO contributions (member_id, category, amount, date, for_month, payment_method, receipt_no, notes, verified)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1)`,
+            [
+              c.member_id,
+              c.category || 'membership_fee',
+              c.amount || 0,
+              c.date || new Date().toISOString().split('T')[0],
+              c.for_month || null,
+              c.payment_method || 'Offline Verified',
+              c.receipt_no,
+              c.notes || 'Synced from cloud',
+            ]
+          );
+        }
+      }
+    }
+
+    res.json({ success: true, message: 'Server database synchronized with cloud data.' });
+  } catch (err) {
+    console.error('Error pushing cloud sync records to server:', err);
+    res.status(500).json({ error: 'Failed to push cloud sync records' });
+  }
+});
+
 // Setup Vite or static files
 async function setupApp() {
   if (process.env.NODE_ENV === 'production') {
