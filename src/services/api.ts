@@ -66,20 +66,75 @@ export async function registerMember(payload: {
   hasKingdomInvestment?: boolean;
   kingdomInvestmentAmount?: number;
 }): Promise<{ success: boolean; memberNumber: string; message: string }> {
-  return callApi('/member/register', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(payload),
-  }, () => localStore.registerMember(payload));
+  let result: { success: boolean; memberNumber: string; message: string };
+
+  try {
+    result = await callApi('/member/register', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+  } catch (err) {
+    // Fallback directly to local store (e.g. static Vercel deployment)
+    result = localStore.registerMember(payload);
+  }
+
+  // CRITICAL: Always ensure the newly registered member exists locally and is pushed to Cloud Database immediately!
+  try {
+    localStore.ensureMemberLocally({
+      memberNumber: result.memberNumber,
+      title: payload.title,
+      name: payload.name,
+      surname: payload.surname,
+      phone: payload.phone,
+      email: payload.email,
+      branchId: payload.branchId,
+      photoUrl: payload.photoUrl,
+      hasMonthlyDues: payload.hasMonthlyDues,
+      hasKingdomInvestment: payload.hasKingdomInvestment,
+      kingdomInvestmentAmount: payload.kingdomInvestmentAmount,
+    });
+    // Immediately upload to Cloud Vault so other devices see the member right away
+    await triggerCloudSync();
+  } catch (syncErr) {
+    console.warn('Post-registration cloud sync notice:', syncErr);
+  }
+
+  return result;
 }
 
 export async function lookupMember(memberNumber: string): Promise<MemberDashboardData> {
-  const cleanId = memberNumber.trim();
-  return callApi<MemberDashboardData>(
-    `/member/lookup/${encodeURIComponent(cleanId)}`,
-    undefined,
-    () => localStore.lookupMember(cleanId)
-  );
+  const cleanId = memberNumber.trim().toUpperCase();
+
+  // 1. Try server endpoint first
+  try {
+    const data = await callApi<MemberDashboardData>(`/member/lookup/${encodeURIComponent(cleanId)}`);
+    if (data && data.member) {
+      localStore.cacheRemoteMemberDashboard(data);
+      return data;
+    }
+  } catch (apiErr: any) {
+    // If not found on backend (or running on a different instance / Vercel), continue to cloud check
+  }
+
+  // 2. Query Cloud Database immediately to pull any members registered from other devices
+  try {
+    await triggerCloudSync();
+  } catch (cloudErr) {
+    console.warn('Pre-lookup cloud sync notice:', cloudErr);
+  }
+
+  // 3. Check local store now that cloud records have been merged
+  try {
+    return localStore.lookupMember(cleanId);
+  } catch (localErr) {
+    // 4. Fallback: Force a direct pull from cloud and retry once more
+    const freshPayload = await triggerCloudSync();
+    if (freshPayload) {
+      return localStore.lookupMember(cleanId);
+    }
+    throw localErr;
+  }
 }
 
 export async function markNotificationsAsRead(memberId: number, notificationIds?: number[]) {

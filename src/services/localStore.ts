@@ -560,6 +560,72 @@ class LocalChurchStore {
     };
   }
 
+  public ensureMemberLocally(data: {
+    memberNumber: string;
+    title: string;
+    name: string;
+    surname: string;
+    phone: string;
+    email?: string;
+    branchId: number;
+    photoUrl?: string;
+    hasMonthlyDues?: boolean;
+    hasKingdomInvestment?: boolean;
+    kingdomInvestmentAmount?: number;
+  }) {
+    const cleanNum = data.memberNumber.trim().toUpperCase();
+    const existing = this.db.members.find((m) => m.member_number.toUpperCase() === cleanNum);
+    if (!existing) {
+      const branch = this.db.branches.find((b) => b.id === data.branchId) || this.db.branches[0];
+      const id = this.db.members.length ? Math.max(...this.db.members.map((m) => m.id)) + 1 : 1;
+      const today = new Date().toISOString().split('T')[0];
+      const newMember: Member = {
+        id,
+        member_number: cleanNum,
+        title: data.title || 'Brother',
+        first_name: data.name,
+        surname: data.surname,
+        full_name: `${data.name} ${data.surname}`.trim(),
+        phone: data.phone,
+        email: data.email || '',
+        photo_url: data.photoUrl || '',
+        branch_id: branch ? branch.id : 1,
+        branch_name: branch ? branch.name : 'Main Sanctuary',
+        branch_code: branch ? branch.code : 'MS',
+        currency_symbol: branch ? branch.currency_symbol : '$',
+        currency_code: branch ? branch.currency_code : 'USD',
+        join_date: today,
+        monthly_due_amount: branch ? branch.default_monthly_due : 20,
+        has_monthly_dues: 1,
+        has_kingdom_investment: data.hasKingdomInvestment ? 1 : 0,
+        kingdom_investment_amount: Number(data.kingdomInvestmentAmount) || 0,
+        status: 'orange',
+        created_at: today,
+      };
+      this.db.members.push(newMember);
+      this.save();
+    }
+  }
+
+  public cacheRemoteMemberDashboard(dashData: MemberDashboardData) {
+    if (!dashData?.member?.member_number) return;
+    const cleanNum = dashData.member.member_number.toUpperCase();
+    const idx = this.db.members.findIndex((m) => m.member_number.toUpperCase() === cleanNum);
+    if (idx === -1) {
+      this.db.members.push(dashData.member);
+    } else {
+      this.db.members[idx] = { ...this.db.members[idx], ...dashData.member };
+    }
+    if (Array.isArray(dashData.contributions)) {
+      for (const c of dashData.contributions) {
+        if (!this.db.contributions.some((item) => item.id === c.id || item.receipt_no === c.receipt_no)) {
+          this.db.contributions.push(c);
+        }
+      }
+    }
+    this.save(this.db, true);
+  }
+
   public markNotificationsRead(memberId: number, notificationIds?: number[]) {
     if (notificationIds && notificationIds.length > 0) {
       this.db.notifications.forEach((n) => {

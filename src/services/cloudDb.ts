@@ -45,8 +45,8 @@ export interface SyncPayload {
   sourceDevice?: string;
 }
 
-const CONFIG_STORAGE_KEY = 'living_faith_cloud_db_config_v2';
-const DEFAULT_GLOBAL_VAULT_ID = 'ff808181a09d98f701a0ed060cfa40cb';
+const CONFIG_STORAGE_KEY = 'living_faith_cloud_db_config_v3';
+const DEFAULT_GLOBAL_VAULT_ID = 'ff808181a09d98f701a0f0e7763347c7';
 const RESTFUL_API_BASE = 'https://api.restful-api.dev/objects';
 
 export const DEFAULT_CONFIG: CloudDbConfig = {
@@ -236,12 +236,24 @@ class CloudDbService {
     this.saveConfig({ syncStatus: 'syncing', syncMessage: 'Pushing changes to Cloud Database...' });
 
     try {
+      // Sanitize members for cloud REST storage so large photos do not exceed 10KB limits
+      const sanitizedMembers = (data.members || []).map((m) => {
+        let photo = m.photo_url || '';
+        if (photo.length > 2000) {
+          photo = '';
+        }
+        return {
+          ...m,
+          photo_url: photo,
+        };
+      });
+
       const fullPayload: SyncPayload = {
         branches: data.branches || [],
-        members: data.members || [],
+        members: sanitizedMembers,
         contributions: data.contributions || [],
         events: data.events || [],
-        notifications: data.notifications || [],
+        notifications: (data.notifications || []).slice(0, 50),
         settings: data.settings,
         updatedAt: new Date().toISOString(),
         sourceDevice: typeof navigator !== 'undefined' ? navigator.userAgent.slice(0, 30) : 'unknown',
@@ -308,16 +320,47 @@ class CloudDbService {
     }
 
     const json = await res.json();
-    const data = json.data;
-    if (!data || !data.members) {
-      return null;
+    const data = json?.data || {};
+
+    const members: Member[] = [];
+    const contributions: Contribution[] = [];
+    const events: ChurchEvent[] = [];
+    let branches: Branch[] = [];
+
+    // Parse keyed members, contributions & events
+    for (const [key, val] of Object.entries(data)) {
+      if (key.startsWith('m_') && typeof val === 'string') {
+        try {
+          members.push(JSON.parse(val));
+        } catch {}
+      } else if (key.startsWith('c_') && typeof val === 'string') {
+        try {
+          contributions.push(JSON.parse(val));
+        } catch {}
+      } else if (key.startsWith('e_') && typeof val === 'string') {
+        try {
+          events.push(JSON.parse(val));
+        } catch {}
+      }
+    }
+
+    if (Array.isArray(data.members)) {
+      for (const m of data.members) {
+        if (!members.some((x) => x.member_number === m.member_number)) {
+          members.push(m);
+        }
+      }
+    }
+
+    if (Array.isArray(data.branches)) {
+      branches = data.branches;
     }
 
     return {
-      branches: Array.isArray(data.branches) ? data.branches : [],
-      members: Array.isArray(data.members) ? data.members : [],
-      contributions: Array.isArray(data.contributions) ? data.contributions : [],
-      events: Array.isArray(data.events) ? data.events : [],
+      branches,
+      members,
+      contributions,
+      events,
       notifications: Array.isArray(data.notifications) ? data.notifications : [],
       settings: data.settings,
       updatedAt: data.updatedAt || new Date().toISOString(),
@@ -328,18 +371,62 @@ class CloudDbService {
     const vaultId = this.config.vaultId || DEFAULT_GLOBAL_VAULT_ID;
     const url = `${RESTFUL_API_BASE}/${vaultId}`;
 
+    const dataObj: Record<string, any> = {
+      updatedAt: payload.updatedAt,
+      sourceDevice: payload.sourceDevice,
+    };
+
+    if (payload.settings) {
+      dataObj.settings = payload.settings;
+    }
+
+    if (Array.isArray(payload.members)) {
+      for (const m of payload.members) {
+        if (!m || !m.member_number) continue;
+        const key = 'm_' + m.member_number.replace(/[^a-zA-Z0-9]/g, '_');
+        dataObj[key] = JSON.stringify({
+          id: m.id,
+          member_number: m.member_number,
+          title: m.title || 'Brother',
+          first_name: m.first_name || '',
+          surname: m.surname || '',
+          full_name: m.full_name || `${m.first_name || ''} ${m.surname || ''}`.trim(),
+          phone: m.phone || '',
+          email: m.email || '',
+          photo_url: '',
+          branch_id: m.branch_id || 1,
+          branch_name: m.branch_name || 'Main Sanctuary',
+          branch_code: m.branch_code || 'MS',
+          currency_symbol: m.currency_symbol || '$',
+          currency_code: m.currency_code || 'USD',
+          join_date: m.join_date || '2026-09-30',
+          monthly_due_amount: m.monthly_due_amount || 20,
+          has_monthly_dues: 1,
+          has_kingdom_investment: m.has_kingdom_investment || 0,
+          kingdom_investment_amount: m.kingdom_investment_amount || 0,
+          status: m.status || 'orange',
+        });
+      }
+    }
+
+    if (Array.isArray(payload.contributions)) {
+      for (const c of payload.contributions.slice(0, 100)) {
+        if (!c || !c.receipt_no) continue;
+        const key = 'c_' + c.receipt_no.replace(/[^a-zA-Z0-9]/g, '_');
+        dataObj[key] = JSON.stringify(c);
+      }
+    }
+
+    if (Array.isArray(payload.events)) {
+      for (const e of payload.events.slice(0, 30)) {
+        if (!e || !e.id) continue;
+        dataObj['e_' + e.id] = JSON.stringify(e);
+      }
+    }
+
     const body = {
       name: 'living-faith-portal-global-db',
-      data: {
-        branches: payload.branches,
-        members: payload.members,
-        contributions: payload.contributions,
-        events: payload.events,
-        notifications: payload.notifications,
-        settings: payload.settings,
-        updatedAt: payload.updatedAt,
-        sourceDevice: payload.sourceDevice,
-      },
+      data: dataObj,
     };
 
     const res = await fetch(url, {

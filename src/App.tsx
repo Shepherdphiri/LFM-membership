@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { MemberDashboardData, ChurchSettings } from './types';
-import { lookupMember, fetchChurchSettings } from './services/api';
+import { lookupMember, fetchChurchSettings, triggerCloudSync } from './services/api';
 import { Header } from './components/Header';
 import { MemberLookup } from './components/MemberLookup';
 import { MemberDashboard } from './components/MemberDashboard';
@@ -33,6 +33,7 @@ export default function App() {
 
   useEffect(() => {
     loadChurchSettings();
+    triggerCloudSync().catch(() => {});
   }, [loadChurchSettings]);
 
   // Fetch member profile by unique ID
@@ -138,6 +139,8 @@ export default function App() {
 
           <div className="flex flex-wrap items-center gap-3 text-slate-500">
             {churchSettings?.address && <span>{churchSettings.address}</span>}
+            <span>•</span>
+            <span className="text-slate-700 font-medium">Developed by Shepherd Zisper Phiri</span>
             <span>•</span>
             <button
               onClick={() => setIsAdminOpen(true)}

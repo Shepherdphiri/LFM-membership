@@ -180,16 +180,12 @@ export const DigitalIDCardModal: React.FC<DigitalIDCardModalProps> = ({
                   className={`px-2.5 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider shrink-0 ${
                     member.status === 'green'
                       ? 'bg-emerald-50 text-emerald-800 border border-emerald-200'
-                      : member.status === 'orange'
-                      ? 'bg-amber-50 text-amber-800 border border-amber-200'
-                      : 'bg-rose-50 text-rose-800 border border-rose-200'
+                      : 'bg-amber-50 text-amber-800 border border-amber-200'
                   }`}
                 >
                   {member.status === 'green'
-                    ? 'Active'
-                    : member.status === 'orange'
-                    ? 'Dues Pending'
-                    : 'Overdue'}
+                    ? 'Active Member'
+                    : 'Verified Member'}
                 </div>
               </div>
 
@@ -268,10 +264,13 @@ export const DigitalIDCardModal: React.FC<DigitalIDCardModalProps> = ({
               </div>
 
               {/* Card Footer Signature Area */}
-              <div className="pt-3 border-t border-slate-200 flex items-center justify-between text-[10px] text-slate-500">
+              <div className="pt-3 border-t border-slate-200 flex flex-col sm:flex-row items-center justify-between gap-1 sm:gap-2 text-[10px] text-slate-500">
                 <div>
                   <span className="block font-bold text-slate-700">{seniorPastor}</span>
                   <span>Senior Pastor & Overseer</span>
+                </div>
+                <div className="text-center font-medium text-[9px] text-slate-400">
+                  Developed by Shepherd Zisper Phiri
                 </div>
                 <div className="text-right">
                   <span className="block font-mono text-slate-700 font-semibold">{member.member_number}</span>

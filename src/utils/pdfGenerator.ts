@@ -122,10 +122,10 @@ export function generateMemberStatementPDF(
   } else if (member.status === 'orange') {
     doc.setFillColor(245, 158, 11);
     doc.setTextColor(255, 255, 255);
-    doc.roundedRect(118, y + 18, 35, 5.5, 1.5, 1.5, 'F');
+    doc.roundedRect(118, y + 18, 38, 5.5, 1.5, 1.5, 'F');
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(7.5);
-    doc.text('DUES PENDING', 120, y + 22);
+    doc.text('IN GOOD STANDING', 120, y + 22);
   } else {
     doc.setFillColor(239, 68, 68);
     doc.setTextColor(255, 255, 255);
@@ -349,7 +349,7 @@ export function buildDigitalIDCardDoc(
   doc.setTextColor(203, 213, 225);
   doc.text('OFFICIAL MEMBERSHIP IDENTIFICATION CARD', 4, 11);
 
-  // Status Badge in header
+  // Status Badge in header (honorable church membership credential)
   if (member.status === 'green') {
     doc.setFillColor(16, 185, 129);
     doc.roundedRect(cardWidth - 24, 4, 20, 6, 1, 1, 'F');
@@ -357,20 +357,13 @@ export function buildDigitalIDCardDoc(
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(5.5);
     doc.text('ACTIVE MEMBER', cardWidth - 22.5, 8.2);
-  } else if (member.status === 'orange') {
-    doc.setFillColor(245, 158, 11);
-    doc.roundedRect(cardWidth - 24, 4, 20, 6, 1, 1, 'F');
-    doc.setTextColor(15, 23, 42);
-    doc.setFont('helvetica', 'bold');
-    doc.setFontSize(5.5);
-    doc.text('DUES PENDING', cardWidth - 22.5, 8.2);
   } else {
-    doc.setFillColor(239, 68, 68);
+    doc.setFillColor(217, 119, 6); // amber-600
     doc.roundedRect(cardWidth - 24, 4, 20, 6, 1, 1, 'F');
     doc.setTextColor(255, 255, 255);
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(5.5);
-    doc.text('INACTIVE / FLAG', cardWidth - 23, 8.2);
+    doc.text('VERIFIED MEMBER', cardWidth - 23.5, 8.2);
   }
 
   // Left Section: Member Details
@@ -459,7 +452,7 @@ export function buildDigitalIDCardDoc(
   doc.setFontSize(5);
   doc.setTextColor(148, 163, 184);
   doc.text(`Authorised: ${pastor} • Overseer`, 4, cardHeight - 6);
-  doc.text(`Valid Church Assembly Record • Keep this card for church services & admissions`, 4, cardHeight - 3);
+  doc.text(`Valid Church Assembly Record • Developed by Shepherd Zisper Phiri`, 4, cardHeight - 3);
 
   return doc;
 }
