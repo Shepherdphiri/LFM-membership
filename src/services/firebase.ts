@@ -5,6 +5,7 @@ import {
   getDoc,
   getDocs,
   setDoc,
+  deleteDoc,
   collection,
   onSnapshot,
   query,
@@ -76,6 +77,39 @@ export async function getAllMembersFromFirestore(): Promise<Member[]> {
   } catch (err) {
     console.error('Failed to fetch members from Firestore:', err);
     return [];
+  }
+}
+
+export async function deleteMemberFromFirestore(memberNumber: string): Promise<void> {
+  if (!memberNumber) return;
+  const cleanId = memberNumber.trim().toUpperCase();
+  const ref = doc(db, 'members', cleanId);
+  await deleteDoc(ref);
+}
+
+export async function clearAllFirestoreMembers(): Promise<void> {
+  try {
+    const snap = await getDocs(collection(db, 'members'));
+    const deletions: Promise<void>[] = [];
+    snap.forEach((d) => {
+      deletions.push(deleteDoc(d.ref));
+    });
+    await Promise.all(deletions);
+  } catch (err) {
+    console.error('Failed to clear members from Firestore:', err);
+  }
+}
+
+export async function clearAllFirestoreContributions(): Promise<void> {
+  try {
+    const snap = await getDocs(collection(db, 'contributions'));
+    const deletions: Promise<void>[] = [];
+    snap.forEach((d) => {
+      deletions.push(deleteDoc(d.ref));
+    });
+    await Promise.all(deletions);
+  } catch (err) {
+    console.error('Failed to clear contributions from Firestore:', err);
   }
 }
 

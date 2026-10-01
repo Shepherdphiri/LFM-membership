@@ -10,7 +10,10 @@ import { localStore, ADMIN_TOKEN } from './localStore';
 import {
   getMemberFromFirestore,
   syncMemberToFirestore,
+  deleteMemberFromFirestore,
   getAllMembersFromFirestore,
+  clearAllFirestoreMembers,
+  clearAllFirestoreContributions,
 } from './firebase';
 
 export const API_BASE = '/api';
@@ -293,6 +296,38 @@ export async function fetchAdminMembers(
   );
 }
 
+export async function deleteAdminMember(
+  token: string,
+  memberNumber: string
+): Promise<{ success: boolean; message: string }> {
+  try {
+    await deleteMemberFromFirestore(memberNumber);
+  } catch (_) {}
+
+  return callApi(
+    `/admin/members/${encodeURIComponent(memberNumber)}`,
+    {
+      method: 'DELETE',
+      headers: { Authorization: `Bearer ${token}` },
+    },
+    () => localStore.deleteMember(memberNumber)
+  );
+}
+
+export async function markAdminMemberVoid(
+  token: string,
+  memberNumber: string
+): Promise<{ success: boolean; message: string }> {
+  return callApi(
+    `/admin/members/${encodeURIComponent(memberNumber)}/void`,
+    {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}` },
+    },
+    () => localStore.markMemberVoid(memberNumber)
+  );
+}
+
 export async function recordAdminContribution(
   token: string,
   data: {
@@ -453,6 +488,11 @@ export async function updateAdminChurchSettings(
 export async function resetAdminCleanSlate(
   token: string
 ): Promise<{ success: boolean; message: string }> {
+  try {
+    await clearAllFirestoreMembers();
+    await clearAllFirestoreContributions();
+  } catch (_) {}
+
   return callApi(
     '/admin/reset-clean',
     {

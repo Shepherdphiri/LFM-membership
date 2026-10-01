@@ -284,8 +284,12 @@ function initTablesAndSeed(db: Database) {
   if (!adminCount[0]?.values[0]?.[0]) {
     db.run(`
       INSERT INTO admin_users (username, password_hash, role, name)
-      VALUES ('admin', 'GraceChurch2026!', 'super_admin', 'Pastor David Sterling');
+      VALUES ('admin', 'LivingFaith2026!', 'super_admin', 'Pastor David Sterling');
     `);
+  } else {
+    try {
+      db.run(`UPDATE admin_users SET password_hash = 'LivingFaith2026!' WHERE username = 'admin' AND password_hash = 'GraceChurch2026!'`);
+    } catch {}
   }
 
   // Seed Branches if not exists

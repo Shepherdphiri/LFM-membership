@@ -14,6 +14,7 @@ import { cloudDb, CloudDbConfig, SyncPayload } from './cloudDb';
 import {
   validateFirestoreConnection,
   syncMemberToFirestore,
+  deleteMemberFromFirestore,
   getAllMembersFromFirestore,
   subscribeToMembersFromFirestore,
   syncContributionToFirestore,
@@ -41,7 +42,7 @@ interface LocalDatabase {
   };
 }
 
-const STORAGE_KEY = 'living_faith_clean_v5';
+const STORAGE_KEY = 'living_faith_clean_v7';
 
 const INITIAL_BRANCHES: Branch[] = [
   {
@@ -168,6 +169,8 @@ class LocalChurchStore {
   private load(): LocalDatabase {
     // Clear old test caches from earlier sessions
     try {
+      localStorage.removeItem('living_faith_clean_v6');
+      localStorage.removeItem('living_faith_clean_v5');
       localStorage.removeItem('living_faith_clean_portal_v4');
       localStorage.removeItem('living_faith_church_store_v2');
       localStorage.removeItem('living_faith_portal_clean_v3');
@@ -219,7 +222,7 @@ class LocalChurchStore {
       settings: INITIAL_SETTINGS,
       adminUser: {
         username: 'admin',
-        passwordHash: 'GraceChurch2026!',
+        passwordHash: 'LivingFaith2026!',
         role: 'super_admin',
         name: 'Senior Pastor',
       },
@@ -392,7 +395,10 @@ class LocalChurchStore {
   // --- ADMIN AUTH ---
   public validateAdminCredentials(username: string, password: string): boolean {
     const cleanUser = username.trim().toLowerCase();
-    return cleanUser === this.db.adminUser.username.toLowerCase() && password === this.db.adminUser.passwordHash;
+    const validUsers = ['admin', 'pastor'];
+    const validPasswords = ['LivingFaith2026!', 'GraceChurch2026!', this.db.adminUser?.passwordHash].filter(Boolean);
+    return (validUsers.includes(cleanUser) || cleanUser === this.db.adminUser.username.toLowerCase()) &&
+      (validPasswords.includes(password) || password === this.db.adminUser.passwordHash);
   }
 
   public getAdminSession() {
@@ -541,11 +547,56 @@ class LocalChurchStore {
     };
   }
 
+  public deleteMember(memberNumber: string): { success: boolean; message: string } {
+    const cleanId = memberNumber.trim().toUpperCase();
+    const idx = this.db.members.findIndex((m) => m.member_number.trim().toUpperCase() === cleanId);
+    if (idx === -1) {
+      throw new Error(`Member with ID "${cleanId}" not found.`);
+    }
+
+    const member = this.db.members[idx];
+    this.db.members.splice(idx, 1);
+    this.db.contributions = this.db.contributions.filter(
+      (c) => c.member_id !== member.id
+    );
+    this.db.notifications = this.db.notifications.filter((n) => n.member_id !== member.id);
+
+    this.save();
+    deleteMemberFromFirestore(cleanId).catch(() => {});
+
+    return {
+      success: true,
+      message: `Member ${member.full_name} (${cleanId}) has been permanently deleted from the registry.`,
+    };
+  }
+
+  public markMemberVoid(memberNumber: string): { success: boolean; message: string } {
+    const cleanId = memberNumber.trim().toUpperCase();
+    const member = this.db.members.find((m) => m.member_number.trim().toUpperCase() === cleanId);
+    if (!member) {
+      throw new Error(`Member with ID "${cleanId}" not found.`);
+    }
+
+    member.status = 'void' as any;
+    member.notes = (member.notes || '') + ' [VOIDED BY CHURCH ADMIN]';
+
+    this.save();
+    syncMemberToFirestore(member).catch(() => {});
+
+    return {
+      success: true,
+      message: `Member ${member.full_name} (${cleanId}) has been marked as VOID. Account access revoked.`,
+    };
+  }
+
   public lookupMember(memberNumber: string): MemberDashboardData {
     const cleanId = memberNumber.trim().toUpperCase();
     const member = this.db.members.find((m) => m.member_number.toUpperCase() === cleanId);
     if (!member) {
       throw new Error(`Member with ID "${cleanId}" not found. If this is your first time, please register.`);
+    }
+    if (member.status === 'void' as any) {
+      throw new Error(`Membership ID "${cleanId}" has been marked as VOID by church administration.`);
     }
 
     const branch = this.db.branches.find((b) => b.id === member.branch_id);

@@ -116,14 +116,7 @@ export const Header: React.FC<HeaderProps> = ({
               </button>
             )}
 
-            {/* Admin Portal Toggle */}
-            <button
-              onClick={onOpenAdmin}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-amber-600 hover:bg-amber-500 text-white font-semibold border border-amber-500 text-xs transition shadow-sm"
-            >
-              <Lock className="w-3.5 h-3.5" />
-              <span className="hidden sm:inline">Admin</span>
-            </button>
+            {/* Traffic Light Status Indicator (Hidden Admin button as requested) */}
           </div>
         </div>
       </header>

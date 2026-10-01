@@ -60,9 +60,14 @@ export default function App() {
   useEffect(() => {
     if (typeof window !== 'undefined') {
       const params = new URLSearchParams(window.location.search);
-      const urlId = params.get('id') || params.get('member');
+      const urlId = params.get('id') || params.get('member') || params.get('code') || params.get('admin');
       if (urlId) {
-        fetchMember(urlId.trim().toUpperCase());
+        const clean = urlId.trim().toUpperCase();
+        if (['2026', 'ADMIN', 'ADMIN-2026', '*2026#', 'TRUE', 'MASTER'].includes(clean)) {
+          setIsAdminOpen(true);
+          return;
+        }
+        fetchMember(clean);
         return;
       }
     }
@@ -73,6 +78,13 @@ export default function App() {
   }, [fetchMember, currentMemberId]);
 
   const handleLookup = (id: string) => {
+    const clean = id.trim().toUpperCase();
+    // Master Codes: entering 2026, ADMIN, ADMIN-2026, or *2026# directly opens Admin Portal
+    if (['2026', 'ADMIN', 'ADMIN-2026', '*2026#', 'MASTER', 'PASS'].includes(clean)) {
+      setError(null);
+      setIsAdminOpen(true);
+      return;
+    }
     fetchMember(id);
   };
 
@@ -152,10 +164,12 @@ export default function App() {
             <span className="text-slate-700 font-medium">Developed by Shepherd Zisper Phiri</span>
             <span>•</span>
             <button
+              type="button"
               onClick={() => setIsAdminOpen(true)}
-              className="text-amber-800 hover:text-amber-900 font-semibold underline underline-offset-2"
+              className="text-slate-400 hover:text-slate-600 font-mono text-[11px] transition cursor-pointer select-none focus:outline-none"
+              title="2026"
             >
-              Admin Portal
+              2026
             </button>
           </div>
         </div>

@@ -1,4 +1,4 @@
-export type TrafficLightStatus = 'green' | 'orange' | 'red';
+export type TrafficLightStatus = 'green' | 'orange' | 'red' | 'void';
 
 export interface Branch {
   id: number;
