@@ -1,0 +1,102 @@
+{
+  "entities": {
+    "Member": {
+      "title": "Member",
+      "description": "Church congregation member account",
+      "type": "object",
+      "properties": {
+        "id": { "type": "number" },
+        "member_number": { "type": "string" },
+        "title": { "type": "string" },
+        "first_name": { "type": "string" },
+        "surname": { "type": "string" },
+        "full_name": { "type": "string" },
+        "phone": { "type": "string" },
+        "email": { "type": "string" },
+        "photo_url": { "type": "string" },
+        "branch_id": { "type": "number" },
+        "branch_name": { "type": "string" },
+        "branch_code": { "type": "string" },
+        "currency_symbol": { "type": "string" },
+        "currency_code": { "type": "string" },
+        "join_date": { "type": "string" },
+        "monthly_due_amount": { "type": "number" },
+        "has_monthly_dues": { "type": "number" },
+        "has_kingdom_investment": { "type": "number" },
+        "kingdom_investment_amount": { "type": "number" },
+        "status": { "type": "string" },
+        "created_at": { "type": "string" },
+        "updated_at": { "type": "string" }
+      },
+      "required": ["member_number", "full_name", "phone"]
+    },
+    "Contribution": {
+      "title": "Contribution",
+      "description": "Member contribution, monthly dues, or investment",
+      "type": "object",
+      "properties": {
+        "id": { "type": "number" },
+        "member_id": { "type": "number" },
+        "member_number": { "type": "string" },
+        "category": { "type": "string" },
+        "amount": { "type": "number" },
+        "date": { "type": "string" },
+        "for_month": { "type": "string" },
+        "payment_method": { "type": "string" },
+        "receipt_no": { "type": "string" },
+        "notes": { "type": "string" },
+        "verified": { "type": "number" },
+        "created_at": { "type": "string" }
+      },
+      "required": ["receipt_no", "amount", "category"]
+    },
+    "Branch": {
+      "title": "Branch",
+      "description": "Church assembly campus/branch",
+      "type": "object",
+      "properties": {
+        "id": { "type": "number" },
+        "name": { "type": "string" },
+        "code": { "type": "string" },
+        "currency_symbol": { "type": "string" },
+        "currency_code": { "type": "string" },
+        "default_monthly_due": { "type": "number" },
+        "address": { "type": "string" }
+      },
+      "required": ["name", "code"]
+    },
+    "ChurchSettings": {
+      "title": "ChurchSettings",
+      "description": "Global church identity and branding settings",
+      "type": "object",
+      "properties": {
+        "church_name": { "type": "string" },
+        "tagline": { "type": "string" },
+        "logo_url": { "type": "string" },
+        "address": { "type": "string" },
+        "phone": { "type": "string" },
+        "email": { "type": "string" },
+        "senior_pastor": { "type": "string" },
+        "updated_at": { "type": "string" }
+      }
+    }
+  },
+  "firestore": {
+    "/members/{memberId}": {
+      "schema": "Member",
+      "description": "Collection of all registered church members accessible for lookup and admin management"
+    },
+    "/contributions/{contributionId}": {
+      "schema": "Contribution",
+      "description": "Collection of all financial records, monthly dues, and kingdom investment receipts"
+    },
+    "/branches/{branchId}": {
+      "schema": "Branch",
+      "description": "Collection of church branches and their assigned currencies"
+    },
+    "/settings/{settingId}": {
+      "schema": "ChurchSettings",
+      "description": "Global church profile and settings"
+    }
+  }
+}

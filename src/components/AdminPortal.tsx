@@ -347,6 +347,15 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ isOpen, onClose, onSet
     return () => window.removeEventListener('church_store_updated', onStoreUpdated);
   }, []);
 
+  // Active cross-device auto-sync polling every 5 seconds while Admin Portal is open
+  useEffect(() => {
+    if (!token) return;
+    const interval = setInterval(() => {
+      triggerCloudSync().catch(() => {});
+    }, 5000);
+    return () => clearInterval(interval);
+  }, [token]);
+
   const handleManualSync = async () => {
     setIsSyncingNow(true);
     try {

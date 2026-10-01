@@ -7,6 +7,11 @@ import {
   ChurchSettings,
 } from '../types';
 import { localStore, ADMIN_TOKEN } from './localStore';
+import {
+  getMemberFromFirestore,
+  syncMemberToFirestore,
+  getAllMembersFromFirestore,
+} from './firebase';
 
 export const API_BASE = '/api';
 
@@ -79,7 +84,7 @@ export async function registerMember(payload: {
     result = localStore.registerMember(payload);
   }
 
-  // CRITICAL: Always ensure the newly registered member exists locally and is pushed to Cloud Database immediately!
+  // CRITICAL: Always ensure the newly registered member exists locally and is pushed to Firestore immediately!
   try {
     localStore.ensureMemberLocally({
       memberNumber: result.memberNumber,
@@ -94,7 +99,14 @@ export async function registerMember(payload: {
       hasKingdomInvestment: payload.hasKingdomInvestment,
       kingdomInvestmentAmount: payload.kingdomInvestmentAmount,
     });
-    // Immediately upload to Cloud Vault so other devices see the member right away
+
+    // Push directly to official Firestore Cloud Database
+    const registeredLocal = localStore.getAdminMembers({ search: result.memberNumber })[0];
+    if (registeredLocal) {
+      await syncMemberToFirestore(registeredLocal as any);
+    }
+
+    // Also trigger cloud vault sync
     await triggerCloudSync();
   } catch (syncErr) {
     console.warn('Post-registration cloud sync notice:', syncErr);
@@ -114,26 +126,43 @@ export async function lookupMember(memberNumber: string): Promise<MemberDashboar
       return data;
     }
   } catch (apiErr: any) {
-    // If not found on backend (or running on a different instance / Vercel), continue to cloud check
+    // Continue to Firestore check
   }
 
-  // 2. Query Cloud Database immediately to pull any members registered from other devices
+  // 2. Direct Firestore query: pulls member registered from other device instantly
   try {
-    await triggerCloudSync();
-  } catch (cloudErr) {
-    console.warn('Pre-lookup cloud sync notice:', cloudErr);
+    const fsMember = await getMemberFromFirestore(cleanId);
+    if (fsMember) {
+      localStore.ensureMemberLocally({
+        memberNumber: fsMember.member_number,
+        title: fsMember.title || 'Brother',
+        name: fsMember.first_name || '',
+        surname: fsMember.surname || '',
+        phone: fsMember.phone || '',
+        email: fsMember.email || '',
+        branchId: fsMember.branch_id || 1,
+        photoUrl: fsMember.photo_url || '',
+        hasMonthlyDues: true,
+        hasKingdomInvestment: !!fsMember.has_kingdom_investment,
+        kingdomInvestmentAmount: fsMember.kingdom_investment_amount,
+      });
+      return localStore.lookupMember(cleanId);
+    }
+  } catch (fsErr) {
+    console.warn('Firestore lookup notice:', fsErr);
   }
 
-  // 3. Check local store now that cloud records have been merged
+  // 3. Fallback: check local store
   try {
     return localStore.lookupMember(cleanId);
   } catch (localErr) {
-    // 4. Fallback: Force a direct pull from cloud and retry once more
-    const freshPayload = await triggerCloudSync();
-    if (freshPayload) {
+    // 4. Final attempt: trigger Cloud sync and retry
+    try {
+      await triggerCloudSync();
       return localStore.lookupMember(cleanId);
+    } catch (_) {
+      throw localErr;
     }
-    throw localErr;
   }
 }
 
@@ -194,6 +223,13 @@ export async function adminLogin(username: string, password: string): Promise<{
 }
 
 export async function fetchAdminStats(token: string): Promise<AdminStats> {
+  try {
+    const fsMembers = await getAllMembersFromFirestore();
+    if (fsMembers.length > 0) {
+      localStore.mergeRemoteData({ members: fsMembers });
+    }
+  } catch (e) {}
+
   return callApi<AdminStats>(
     '/admin/stats',
     { headers: { Authorization: `Bearer ${token}` } },
@@ -235,6 +271,13 @@ export async function fetchAdminMembers(
   token: string,
   params?: { search?: string; status?: string; branchId?: string | number }
 ): Promise<AdminMemberListItem[]> {
+  try {
+    const fsMembers = await getAllMembersFromFirestore();
+    if (fsMembers.length > 0) {
+      localStore.mergeRemoteData({ members: fsMembers });
+    }
+  } catch (e) {}
+
   const query = new URLSearchParams();
   if (params?.search) query.set('search', params.search);
   if (params?.status) query.set('status', params.status);

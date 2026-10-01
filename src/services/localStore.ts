@@ -11,6 +11,18 @@ import {
   TrafficLightStatus,
 } from '../types';
 import { cloudDb, CloudDbConfig, SyncPayload } from './cloudDb';
+import {
+  validateFirestoreConnection,
+  syncMemberToFirestore,
+  getAllMembersFromFirestore,
+  subscribeToMembersFromFirestore,
+  syncContributionToFirestore,
+  getAllContributionsFromFirestore,
+  subscribeToContributionsFromFirestore,
+  syncChurchSettingsToFirestore,
+  getChurchSettingsFromFirestore,
+  subscribeToChurchSettingsFromFirestore,
+} from './firebase';
 
 export const ADMIN_TOKEN = 'grace-admin-secure-token-2026-auth';
 
@@ -101,13 +113,52 @@ class LocalChurchStore {
   constructor() {
     this.db = this.load();
 
-    // Listen for real-time remote updates from the free Cloud Database
+    // 1. Listen for real-time remote updates from the Cloud Database
     cloudDb.onRemoteDataReceived((remoteData) => {
       this.mergeRemoteData(remoteData);
     });
 
-    // Initial pull from cloud so data synced on another device is immediately loaded
     if (typeof window !== 'undefined') {
+      // 2. Validate Firestore connection on boot per Firebase guidelines
+      validateFirestoreConnection().catch(() => {});
+
+      // 3. Real-time Firestore listener: instant live sync across devices (phone, laptop)
+      subscribeToMembersFromFirestore((remoteMembers) => {
+        if (Array.isArray(remoteMembers) && remoteMembers.length > 0) {
+          this.mergeRemoteData({ members: remoteMembers });
+        }
+      });
+
+      // 4. Real-time Firestore contributions listener
+      subscribeToContributionsFromFirestore((remoteContribs) => {
+        if (Array.isArray(remoteContribs) && remoteContribs.length > 0) {
+          this.mergeRemoteData({ contributions: remoteContribs });
+        }
+      });
+
+      // 5. Real-time Firestore church settings listener
+      subscribeToChurchSettingsFromFirestore((remoteSettings) => {
+        if (remoteSettings && remoteSettings.church_name) {
+          this.mergeRemoteData({ settings: remoteSettings });
+        }
+      });
+
+      // 6. Initial pull from Firestore on startup
+      setTimeout(async () => {
+        try {
+          const [mList, cList, sData] = await Promise.all([
+            getAllMembersFromFirestore(),
+            getAllContributionsFromFirestore(),
+            getChurchSettingsFromFirestore(),
+          ]);
+          this.mergeRemoteData({
+            members: mList,
+            contributions: cList,
+            settings: sData || undefined,
+          });
+        } catch (_) {}
+      }, 100);
+
       setTimeout(() => {
         cloudDb.pullFromCloud().catch(() => {});
       }, 200);
@@ -190,7 +241,7 @@ class LocalChurchStore {
     this.save();
   }
 
-  public mergeRemoteData(remote: SyncPayload) {
+  public mergeRemoteData(remote: Partial<SyncPayload>) {
     let hasChanges = false;
 
     // 1. Merge members
@@ -270,6 +321,17 @@ class LocalChurchStore {
       localStorage.setItem(STORAGE_KEY, JSON.stringify(toSave));
 
       if (!skipCloudPush) {
+        // Direct Firestore synchronization across all devices
+        if (Array.isArray(toSave.members)) {
+          toSave.members.forEach((m) => syncMemberToFirestore(m).catch(() => {}));
+        }
+        if (Array.isArray(toSave.contributions)) {
+          toSave.contributions.slice(-25).forEach((c) => syncContributionToFirestore(c).catch(() => {}));
+        }
+        if (toSave.settings) {
+          syncChurchSettingsToFirestore(toSave.settings).catch(() => {});
+        }
+
         cloudDb.pushToCloud({
           branches: toSave.branches,
           members: toSave.members,

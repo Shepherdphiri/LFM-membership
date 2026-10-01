@@ -56,8 +56,17 @@ export default function App() {
     }
   }, []);
 
-  // Initial load if an ID was previously stored
+  // Initial load if an ID was previously stored or in URL query parameters
   useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const params = new URLSearchParams(window.location.search);
+      const urlId = params.get('id') || params.get('member');
+      if (urlId) {
+        fetchMember(urlId.trim().toUpperCase());
+        return;
+      }
+    }
+
     if (currentMemberId) {
       fetchMember(currentMemberId);
     }

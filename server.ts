@@ -467,6 +467,8 @@ const requireAdmin = (req: express.Request, res: express.Response, next: express
 // Admin overview stats
 app.get('/api/admin/stats', requireAdmin, async (req, res) => {
   try {
+    await pullCloudVaultToServer();
+
     const members = await queryAll<any>(`
       SELECT m.*, b.name as branch_name, b.code as branch_code, b.currency_symbol, b.currency_code
       FROM members m
@@ -632,6 +634,8 @@ app.put('/api/admin/church-settings', requireAdmin, async (req, res) => {
 // Admin Member Directory
 app.get('/api/admin/members', requireAdmin, async (req, res) => {
   try {
+    await pullCloudVaultToServer();
+
     const { search, status, branchId } = req.query;
     let sql = `
       SELECT m.*, b.name as branch_name, b.code as branch_code, b.currency_symbol, b.currency_code
