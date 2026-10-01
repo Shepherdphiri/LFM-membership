@@ -23,6 +23,16 @@ import {
   syncChurchSettingsToFirestore,
   getChurchSettingsFromFirestore,
   subscribeToChurchSettingsFromFirestore,
+  syncEventToFirestore,
+  deleteEventFromFirestore,
+  getAllEventsFromFirestore,
+  subscribeToEventsFromFirestore,
+  syncBranchToFirestore,
+  getAllBranchesFromFirestore,
+  subscribeToBranchesFromFirestore,
+  syncNotificationToFirestore,
+  getAllNotificationsFromFirestore,
+  subscribeToNotificationsFromFirestore,
 } from './firebase';
 
 export const ADMIN_TOKEN = 'grace-admin-secure-token-2026-auth';
@@ -137,25 +147,52 @@ class LocalChurchStore {
         }
       });
 
-      // 5. Real-time Firestore church settings listener
+      // 5. Real-time Firestore church settings listener (Logo, Name, Details)
       subscribeToChurchSettingsFromFirestore((remoteSettings) => {
         if (remoteSettings && remoteSettings.church_name) {
           this.mergeRemoteData({ settings: remoteSettings });
         }
       });
 
-      // 6. Initial pull from Firestore on startup
+      // 6. Real-time Firestore events listener (Calendar, schedules across all devices)
+      subscribeToEventsFromFirestore((remoteEvents) => {
+        if (Array.isArray(remoteEvents)) {
+          this.mergeRemoteData({ events: remoteEvents });
+        }
+      });
+
+      // 7. Real-time Firestore branches listener
+      subscribeToBranchesFromFirestore((remoteBranches) => {
+        if (Array.isArray(remoteBranches) && remoteBranches.length > 0) {
+          this.mergeRemoteData({ branches: remoteBranches });
+        }
+      });
+
+      // 8. Real-time Firestore notifications listener
+      subscribeToNotificationsFromFirestore((remoteNotifs) => {
+        if (Array.isArray(remoteNotifs) && remoteNotifs.length > 0) {
+          this.mergeRemoteData({ notifications: remoteNotifs });
+        }
+      });
+
+      // 9. Initial pull from Firestore on startup
       setTimeout(async () => {
         try {
-          const [mList, cList, sData] = await Promise.all([
+          const [mList, cList, sData, eList, bList, nList] = await Promise.all([
             getAllMembersFromFirestore(),
             getAllContributionsFromFirestore(),
             getChurchSettingsFromFirestore(),
+            getAllEventsFromFirestore(),
+            getAllBranchesFromFirestore(),
+            getAllNotificationsFromFirestore(),
           ]);
           this.mergeRemoteData({
             members: mList,
             contributions: cList,
             settings: sData || undefined,
+            events: eList,
+            branches: bList && bList.length > 0 ? bList : undefined,
+            notifications: nList && nList.length > 0 ? nList : undefined,
           });
         } catch (_) {}
       }, 100);
@@ -290,24 +327,30 @@ class LocalChurchStore {
 
     // 3. Merge events
     if (Array.isArray(remote.events)) {
-      for (const remoteEvent of remote.events) {
-        if (!remoteEvent || !remoteEvent.title) continue;
-        const exists = this.db.events.some(
-          (e) => e.title === remoteEvent.title && e.start_date === remoteEvent.start_date
-        );
-        if (!exists) {
-          this.db.events.push(remoteEvent);
-          hasChanges = true;
-        }
-      }
+      this.db.events = [...remote.events].sort(
+        (a, b) => new Date(b.start_date).getTime() - new Date(a.start_date).getTime()
+      );
+      hasChanges = true;
     }
 
-    // 4. Merge settings
+    // 4. Merge settings (logo, contact info, pastor)
     if (remote.settings && remote.settings.church_name) {
-      if (!this.db.settings || !this.db.settings.updated_at || (remote.settings.updated_at && remote.settings.updated_at >= this.db.settings.updated_at)) {
-        this.db.settings = { ...this.db.settings, ...remote.settings };
-        hasChanges = true;
-      }
+      this.db.settings = { ...this.db.settings, ...remote.settings };
+      hasChanges = true;
+    }
+
+    // 5. Merge branches
+    if (Array.isArray(remote.branches) && remote.branches.length > 0) {
+      this.db.branches = [...remote.branches].sort((a, b) => a.name.localeCompare(b.name));
+      hasChanges = true;
+    }
+
+    // 6. Merge notifications
+    if (Array.isArray(remote.notifications) && remote.notifications.length > 0) {
+      this.db.notifications = [...remote.notifications].sort(
+        (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+      );
+      hasChanges = true;
     }
 
     if (hasChanges) {
@@ -330,6 +373,12 @@ class LocalChurchStore {
         }
         if (Array.isArray(toSave.contributions)) {
           toSave.contributions.slice(-25).forEach((c) => syncContributionToFirestore(c).catch(() => {}));
+        }
+        if (toSave.settings) {
+          syncChurchSettingsToFirestore(toSave.settings).catch(() => {});
+        }
+        if (Array.isArray(toSave.events)) {
+          toSave.events.forEach((ev) => syncEventToFirestore(ev).catch(() => {}));
         }
         if (toSave.settings) {
           syncChurchSettingsToFirestore(toSave.settings).catch(() => {});
@@ -426,7 +475,7 @@ class LocalChurchStore {
   }
 
   public createBranch(data: Partial<Branch>): Branch {
-    const id = this.db.branches.length ? Math.max(...this.db.branches.map((b) => b.id)) + 1 : 1;
+    const id = Date.now();
     const newBranch: Branch = {
       id,
       name: data.name?.trim() || 'New Branch',
@@ -439,6 +488,7 @@ class LocalChurchStore {
     };
     this.db.branches.push(newBranch);
     this.save();
+    syncBranchToFirestore(newBranch).catch(() => {});
     return newBranch;
   }
 
@@ -452,6 +502,7 @@ class LocalChurchStore {
       code: (data.code?.trim() || this.db.branches[index].code).toUpperCase(),
     };
     this.save();
+    syncBranchToFirestore(this.db.branches[index]).catch(() => {});
     return this.db.branches[index];
   }
 
@@ -467,6 +518,9 @@ class LocalChurchStore {
       updated_at: new Date().toISOString(),
     };
     this.save();
+    syncChurchSettingsToFirestore(this.db.settings).catch((err) => {
+      console.warn('Failed to sync church settings to Firestore:', err);
+    });
     return this.db.settings;
   }
 
@@ -1009,7 +1063,7 @@ class LocalChurchStore {
   }
 
   public createEvent(payload: any): ChurchEvent {
-    const id = this.db.events.length ? Math.max(...this.db.events.map((e) => e.id)) + 1 : 1;
+    const id = Date.now();
     const newEv: ChurchEvent = {
       id,
       title: payload.title?.trim() || 'Church Event',
@@ -1024,6 +1078,9 @@ class LocalChurchStore {
     };
     this.db.events.unshift(newEv);
     this.save();
+    syncEventToFirestore(newEv).catch((err) => {
+      console.warn('Failed to sync event to Firestore:', err);
+    });
     return newEv;
   }
 
@@ -1035,18 +1092,24 @@ class LocalChurchStore {
       ...payload,
     };
     this.save();
+    syncEventToFirestore(this.db.events[index]).catch((err) => {
+      console.warn('Failed to sync updated event to Firestore:', err);
+    });
     return this.db.events[index];
   }
 
   public deleteEvent(id: number) {
     this.db.events = this.db.events.filter((e) => e.id !== id);
     this.save();
+    deleteEventFromFirestore(id).catch((err) => {
+      console.warn('Failed to delete event from Firestore:', err);
+    });
     return { success: true };
   }
 
   // --- NOTIFICATIONS ---
   public broadcastNotification(data: { member_id?: number | null; title: string; message: string }) {
-    const id = this.db.notifications.length ? Math.max(...this.db.notifications.map((n) => n.id)) + 1 : 1;
+    const id = Date.now();
     const newNotif: NotificationItem = {
       id,
       member_id: data.member_id || null,
@@ -1058,6 +1121,7 @@ class LocalChurchStore {
     };
     this.db.notifications.unshift(newNotif);
     this.save();
+    syncNotificationToFirestore(newNotif).catch(() => {});
     return { success: true, notification: newNotif };
   }
 

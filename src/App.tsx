@@ -56,6 +56,18 @@ export default function App() {
     }
   }, []);
 
+  // Real-time listener for cross-device Firestore updates
+  useEffect(() => {
+    const handleStoreUpdated = () => {
+      loadChurchSettings();
+      if (currentMemberId) {
+        fetchMember(currentMemberId);
+      }
+    };
+    window.addEventListener('church_store_updated', handleStoreUpdated);
+    return () => window.removeEventListener('church_store_updated', handleStoreUpdated);
+  }, [loadChurchSettings, currentMemberId, fetchMember]);
+
   // Initial load if an ID was previously stored or in URL query parameters
   useEffect(() => {
     if (typeof window !== 'undefined') {

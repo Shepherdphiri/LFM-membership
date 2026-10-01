@@ -14,6 +14,14 @@ import {
   getAllMembersFromFirestore,
   clearAllFirestoreMembers,
   clearAllFirestoreContributions,
+  syncChurchSettingsToFirestore,
+  getChurchSettingsFromFirestore,
+  syncEventToFirestore,
+  deleteEventFromFirestore,
+  getAllEventsFromFirestore,
+  clearAllFirestoreEvents,
+  syncBranchToFirestore,
+  getAllBranchesFromFirestore,
 } from './firebase';
 
 export const API_BASE = '/api';
@@ -402,6 +410,13 @@ export async function fetchAdminMemberDuesMonths(
 }
 
 export async function fetchAdminEvents(token: string): Promise<ChurchEvent[]> {
+  try {
+    const remote = await getAllEventsFromFirestore();
+    if (Array.isArray(remote) && remote.length > 0) {
+      localStore.mergeRemoteData({ events: remote });
+      return remote;
+    }
+  } catch (_) {}
   return callApi<ChurchEvent[]>(
     '/admin/events',
     { headers: { Authorization: `Bearer ${token}` } },
@@ -409,33 +424,52 @@ export async function fetchAdminEvents(token: string): Promise<ChurchEvent[]> {
   );
 }
 
-export async function createAdminEvent(token: string, payload: any) {
-  return callApi('/admin/events', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${token}`,
-    },
-    body: JSON.stringify(payload),
-  }, () => localStore.createEvent(payload));
+export async function createAdminEvent(token: string, payload: any): Promise<ChurchEvent> {
+  const localEv = localStore.createEvent(payload);
+  await syncEventToFirestore(localEv).catch(() => {});
+  try {
+    const res = await callApi<ChurchEvent>('/admin/events', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify(payload),
+    });
+    if (res && res.id) {
+      syncEventToFirestore(res).catch(() => {});
+      return res;
+    }
+  } catch (_) {}
+  return localEv;
 }
 
-export async function updateAdminEvent(token: string, id: number, payload: any) {
-  return callApi(`/admin/events/${id}`, {
-    method: 'PUT',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${token}`,
-    },
-    body: JSON.stringify(payload),
-  }, () => localStore.updateEvent(id, payload));
+export async function updateAdminEvent(token: string, id: number, payload: any): Promise<ChurchEvent> {
+  const localEv = localStore.updateEvent(id, payload);
+  await syncEventToFirestore(localEv).catch(() => {});
+  try {
+    await callApi(`/admin/events/${id}`, {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify(payload),
+    });
+  } catch (_) {}
+  return localEv;
 }
 
 export async function deleteAdminEvent(token: string, id: number) {
-  return callApi(`/admin/events/${id}`, {
-    method: 'DELETE',
-    headers: { Authorization: `Bearer ${token}` },
-  }, () => localStore.deleteEvent(id));
+  localStore.deleteEvent(id);
+  await deleteEventFromFirestore(id).catch(() => {});
+  try {
+    await callApi(`/admin/events/${id}`, {
+      method: 'DELETE',
+      headers: { Authorization: `Bearer ${token}` },
+    });
+  } catch (_) {}
+  return { success: true };
 }
 
 export async function broadcastAdminNotification(
@@ -457,10 +491,24 @@ export async function broadcastAdminNotification(
 }
 
 export async function fetchChurchSettings(): Promise<ChurchSettings> {
+  try {
+    const remote = await getChurchSettingsFromFirestore();
+    if (remote && remote.church_name) {
+      localStore.updateChurchSettings(remote);
+      return remote;
+    }
+  } catch (_) {}
   return callApi<ChurchSettings>('/church-settings', undefined, () => localStore.getChurchSettings());
 }
 
 export async function fetchAdminChurchSettings(token: string): Promise<ChurchSettings> {
+  try {
+    const remote = await getChurchSettingsFromFirestore();
+    if (remote && remote.church_name) {
+      localStore.updateChurchSettings(remote);
+      return remote;
+    }
+  } catch (_) {}
   return callApi<ChurchSettings>(
     '/admin/church-settings',
     { headers: { Authorization: `Bearer ${token}` } },
@@ -472,17 +520,19 @@ export async function updateAdminChurchSettings(
   token: string,
   payload: Partial<ChurchSettings>
 ): Promise<{ success: boolean; settings: ChurchSettings; message: string }> {
-  return callApi('/admin/church-settings', {
-    method: 'PUT',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${token}`,
-    },
-    body: JSON.stringify(payload),
-  }, () => {
-    const updated = localStore.updateChurchSettings(payload);
-    return { success: true, settings: updated, message: 'Church details & branding updated successfully.' };
-  });
+  const updated = localStore.updateChurchSettings(payload);
+  await syncChurchSettingsToFirestore(updated).catch(() => {});
+  try {
+    await callApi('/admin/church-settings', {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify(payload),
+    });
+  } catch (_) {}
+  return { success: true, settings: updated, message: 'Church details & branding updated successfully across all devices.' };
 }
 
 export async function resetAdminCleanSlate(
@@ -491,6 +541,7 @@ export async function resetAdminCleanSlate(
   try {
     await clearAllFirestoreMembers();
     await clearAllFirestoreContributions();
+    await clearAllFirestoreEvents();
   } catch (_) {}
 
   return callApi(

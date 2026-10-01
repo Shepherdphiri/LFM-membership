@@ -13,7 +13,7 @@ import {
   Firestore,
 } from 'firebase/firestore';
 import firebaseConfig from '../../firebase-applet-config.json';
-import { Member, Contribution, ChurchSettings, Branch } from '../types';
+import { Member, Contribution, ChurchSettings, Branch, ChurchEvent, NotificationItem } from '../types';
 
 // Initialize Firebase App singleton
 const app = getApps().length > 0 ? getApp() : initializeApp(firebaseConfig);
@@ -192,7 +192,7 @@ export function subscribeToContributionsFromFirestore(onUpdate: (contribs: Contr
 }
 
 // ----------------------------------------------------
-// CHURCH SETTINGS & BRANCHES
+// CHURCH SETTINGS & BRANDING
 // ----------------------------------------------------
 
 export async function syncChurchSettingsToFirestore(settings: ChurchSettings): Promise<void> {
@@ -236,3 +236,185 @@ export function subscribeToChurchSettingsFromFirestore(onUpdate: (settings: Chur
     return () => {};
   }
 }
+
+// ----------------------------------------------------
+// CHURCH EVENTS CALENDAR (Cross-device real-time sync)
+// ----------------------------------------------------
+
+export async function syncEventToFirestore(event: ChurchEvent): Promise<void> {
+  if (!event || !event.id) return;
+  const ref = doc(db, 'events', String(event.id));
+  await setDoc(ref, {
+    ...event,
+    updated_at: new Date().toISOString(),
+  }, { merge: true });
+}
+
+export async function deleteEventFromFirestore(eventId: number | string): Promise<void> {
+  if (!eventId) return;
+  const ref = doc(db, 'events', String(eventId));
+  await deleteDoc(ref);
+}
+
+export async function getAllEventsFromFirestore(): Promise<ChurchEvent[]> {
+  try {
+    const colRef = collection(db, 'events');
+    const snap = await getDocs(colRef);
+    const events: ChurchEvent[] = [];
+    snap.forEach((d) => {
+      events.push(d.data() as ChurchEvent);
+    });
+    return events.sort(
+      (a, b) => new Date(b.start_date).getTime() - new Date(a.start_date).getTime()
+    );
+  } catch (err) {
+    console.error('Failed to fetch events from Firestore:', err);
+    return [];
+  }
+}
+
+export function subscribeToEventsFromFirestore(onUpdate: (events: ChurchEvent[]) => void): () => void {
+  try {
+    const colRef = collection(db, 'events');
+    const unsubscribe = onSnapshot(
+      colRef,
+      (snapshot) => {
+        const events: ChurchEvent[] = [];
+        snapshot.forEach((d) => {
+          events.push(d.data() as ChurchEvent);
+        });
+        events.sort(
+          (a, b) => new Date(b.start_date).getTime() - new Date(a.start_date).getTime()
+        );
+        onUpdate(events);
+      },
+      (error) => {
+        console.warn('Firestore events subscription error:', error);
+      }
+    );
+    return unsubscribe;
+  } catch (err) {
+    console.warn('Could not subscribe to events in Firestore:', err);
+    return () => {};
+  }
+}
+
+export async function clearAllFirestoreEvents(): Promise<void> {
+  try {
+    const snap = await getDocs(collection(db, 'events'));
+    const deletions: Promise<void>[] = [];
+    snap.forEach((d) => {
+      deletions.push(deleteDoc(d.ref));
+    });
+    await Promise.all(deletions);
+  } catch (err) {
+    console.error('Failed to clear events from Firestore:', err);
+  }
+}
+
+// ----------------------------------------------------
+// BRANCHES CONFIGURATION (Cross-device sync)
+// ----------------------------------------------------
+
+export async function syncBranchToFirestore(branch: Branch): Promise<void> {
+  if (!branch || !branch.id) return;
+  const ref = doc(db, 'branches', String(branch.id));
+  await setDoc(ref, {
+    ...branch,
+    updated_at: new Date().toISOString(),
+  }, { merge: true });
+}
+
+export async function getAllBranchesFromFirestore(): Promise<Branch[]> {
+  try {
+    const colRef = collection(db, 'branches');
+    const snap = await getDocs(colRef);
+    const branches: Branch[] = [];
+    snap.forEach((d) => {
+      branches.push(d.data() as Branch);
+    });
+    return branches.sort((a, b) => a.name.localeCompare(b.name));
+  } catch (err) {
+    console.warn('Failed to fetch branches from Firestore:', err);
+    return [];
+  }
+}
+
+export function subscribeToBranchesFromFirestore(onUpdate: (branches: Branch[]) => void): () => void {
+  try {
+    const colRef = collection(db, 'branches');
+    const unsubscribe = onSnapshot(
+      colRef,
+      (snapshot) => {
+        const branches: Branch[] = [];
+        snapshot.forEach((d) => {
+          branches.push(d.data() as Branch);
+        });
+        branches.sort((a, b) => a.name.localeCompare(b.name));
+        onUpdate(branches);
+      },
+      (error) => {
+        console.warn('Firestore branches subscription error:', error);
+      }
+    );
+    return unsubscribe;
+  } catch (err) {
+    return () => {};
+  }
+}
+
+// ----------------------------------------------------
+// BROADCAST NOTIFICATIONS (Cross-device sync)
+// ----------------------------------------------------
+
+export async function syncNotificationToFirestore(notif: NotificationItem): Promise<void> {
+  if (!notif || !notif.id) return;
+  const ref = doc(db, 'notifications', String(notif.id));
+  await setDoc(ref, {
+    ...notif,
+    updated_at: new Date().toISOString(),
+  }, { merge: true });
+}
+
+export async function getAllNotificationsFromFirestore(): Promise<NotificationItem[]> {
+  try {
+    const colRef = collection(db, 'notifications');
+    const snap = await getDocs(colRef);
+    const notifs: NotificationItem[] = [];
+    snap.forEach((d) => {
+      notifs.push(d.data() as NotificationItem);
+    });
+    return notifs.sort(
+      (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+    );
+  } catch (err) {
+    console.warn('Failed to fetch notifications from Firestore:', err);
+    return [];
+  }
+}
+
+export function subscribeToNotificationsFromFirestore(onUpdate: (notifs: NotificationItem[]) => void): () => void {
+  try {
+    const colRef = collection(db, 'notifications');
+    const unsubscribe = onSnapshot(
+      colRef,
+      (snapshot) => {
+        const notifs: NotificationItem[] = [];
+        snapshot.forEach((d) => {
+          notifs.push(d.data() as NotificationItem);
+        });
+        notifs.sort(
+          (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+        );
+        onUpdate(notifs);
+      },
+      (error) => {
+        console.warn('Firestore notifications subscription error:', error);
+      }
+    );
+    return unsubscribe;
+  } catch (err) {
+    return () => {};
+  }
+}
+

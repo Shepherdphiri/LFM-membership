@@ -610,21 +610,39 @@ app.put('/api/admin/church-settings', requireAdmin, async (req, res) => {
       return res.status(400).json({ error: 'Church name is required.' });
     }
 
-    await runExec(
-      `UPDATE church_settings
-       SET church_name = ?, tagline = ?, logo_url = ?, address = ?, phone = ?, email = ?, senior_pastor = ?, tax_id = ?, updated_at = CURRENT_TIMESTAMP
-       WHERE id = 1`,
-      [
-        church_name.trim(),
-        tagline?.trim() || '',
-        logo_url?.trim() || '',
-        address?.trim() || '',
-        phone?.trim() || '',
-        email?.trim() || '',
-        senior_pastor?.trim() || '',
-        tax_id?.trim() || '',
-      ]
-    );
+    const existing = await queryOne<ChurchSettings>(`SELECT * FROM church_settings WHERE id = 1`);
+    if (existing) {
+      await runExec(
+        `UPDATE church_settings
+         SET church_name = ?, tagline = ?, logo_url = ?, address = ?, phone = ?, email = ?, senior_pastor = ?, tax_id = ?, updated_at = CURRENT_TIMESTAMP
+         WHERE id = 1`,
+        [
+          church_name.trim(),
+          tagline?.trim() || '',
+          logo_url?.trim() || '',
+          address?.trim() || '',
+          phone?.trim() || '',
+          email?.trim() || '',
+          senior_pastor?.trim() || '',
+          tax_id?.trim() || '',
+        ]
+      );
+    } else {
+      await runExec(
+        `INSERT INTO church_settings (id, church_name, tagline, logo_url, address, phone, email, senior_pastor, tax_id)
+         VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [
+          church_name.trim(),
+          tagline?.trim() || '',
+          logo_url?.trim() || '',
+          address?.trim() || '',
+          phone?.trim() || '',
+          email?.trim() || '',
+          senior_pastor?.trim() || '',
+          tax_id?.trim() || '',
+        ]
+      );
+    }
 
     const updated = await queryOne<ChurchSettings>(`SELECT * FROM church_settings WHERE id = 1`);
     res.json({ success: true, settings: updated, message: 'Church details & branding updated successfully.' });
