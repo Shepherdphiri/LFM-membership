@@ -10,7 +10,6 @@ import {
   AdminMemberListItem,
   TrafficLightStatus,
 } from '../types';
-import { cloudDb, CloudDbConfig, SyncPayload } from './cloudDb';
 import {
   validateFirestoreConnection,
   syncMemberToFirestore,
@@ -37,6 +36,15 @@ import {
 
 export const ADMIN_TOKEN = 'grace-admin-secure-token-2026-auth';
 
+export interface SyncPayload {
+  branches?: Branch[];
+  members?: Member[];
+  contributions?: Contribution[];
+  events?: ChurchEvent[];
+  notifications?: NotificationItem[];
+  settings?: ChurchSettings;
+}
+
 interface LocalDatabase {
   branches: Branch[];
   members: Member[];
@@ -52,7 +60,7 @@ interface LocalDatabase {
   };
 }
 
-const STORAGE_KEY = 'living_faith_clean_v7';
+const STORAGE_KEY = 'living_faith_clean_v8';
 
 const INITIAL_BRANCHES: Branch[] = [
   {
@@ -97,17 +105,218 @@ const INITIAL_BRANCHES: Branch[] = [
   },
 ];
 
-const INITIAL_MEMBERS: Member[] = [];
+const INITIAL_MEMBERS: Member[] = [
+  {
+    id: 1,
+    member_number: 'CPT-1001',
+    title: 'Brother',
+    first_name: 'Shepherd',
+    surname: 'Phiri',
+    full_name: 'Shepherd Phiri',
+    phone: '+265991234567',
+    email: 'shepherdphiri88@gmail.com',
+    photo_url: '',
+    branch_id: 4,
+    branch_name: 'Cape Town Branch (South Africa)',
+    branch_code: 'CPT',
+    currency_symbol: 'R',
+    currency_code: 'ZAR',
+    join_date: '2026-10-01',
+    monthly_due_amount: 150,
+    has_monthly_dues: 1,
+    has_kingdom_investment: 1,
+    kingdom_investment_amount: 500,
+    status: 'green',
+    verified: 1,
+    created_at: '2026-10-01',
+  },
+  {
+    id: 2,
+    member_number: 'LLW-1001',
+    title: 'Brother',
+    first_name: 'John',
+    surname: 'Banda',
+    full_name: 'John Banda',
+    phone: '+265991234567',
+    email: 'john.banda@email.com',
+    photo_url: '',
+    branch_id: 1,
+    branch_name: 'Lilongwe Branch (Malawi)',
+    branch_code: 'LLW',
+    currency_symbol: 'MK',
+    currency_code: 'MWK',
+    join_date: '2026-09-01',
+    monthly_due_amount: 5000,
+    has_monthly_dues: 1,
+    has_kingdom_investment: 0,
+    kingdom_investment_amount: 0,
+    status: 'green',
+    verified: 1,
+    created_at: '2026-09-01',
+  },
+  {
+    id: 3,
+    member_number: 'LLW-1002',
+    title: 'Brother',
+    first_name: 'Samuel',
+    surname: 'Phiri',
+    full_name: 'Samuel Phiri',
+    phone: '+265999887766',
+    email: 'samuel.phiri@email.com',
+    photo_url: '',
+    branch_id: 1,
+    branch_name: 'Lilongwe Branch (Malawi)',
+    branch_code: 'LLW',
+    currency_symbol: 'MK',
+    currency_code: 'MWK',
+    join_date: '2026-09-01',
+    monthly_due_amount: 5000,
+    has_monthly_dues: 1,
+    has_kingdom_investment: 1,
+    kingdom_investment_amount: 10000,
+    status: 'green',
+    verified: 1,
+    created_at: '2026-09-01',
+  },
+  {
+    id: 4,
+    member_number: 'LLW-1003',
+    title: 'Sister',
+    first_name: 'Grace',
+    surname: 'Chisale',
+    full_name: 'Grace Chisale',
+    phone: '+265888112233',
+    email: 'grace.chisale@email.com',
+    photo_url: '',
+    branch_id: 1,
+    branch_name: 'Lilongwe Branch (Malawi)',
+    branch_code: 'LLW',
+    currency_symbol: 'MK',
+    currency_code: 'MWK',
+    join_date: '2026-09-01',
+    monthly_due_amount: 5000,
+    has_monthly_dues: 1,
+    has_kingdom_investment: 0,
+    kingdom_investment_amount: 0,
+    status: 'green',
+    verified: 1,
+    created_at: '2026-09-01',
+  },
+  {
+    id: 5,
+    member_number: 'LLW-1004',
+    title: 'Sister',
+    first_name: 'Tendai',
+    surname: 'Moyo',
+    full_name: 'Tendai Moyo',
+    phone: '+26599445566',
+    email: 'tendai.moyo@email.com',
+    photo_url: '',
+    branch_id: 1,
+    branch_name: 'Lilongwe Branch (Malawi)',
+    branch_code: 'LLW',
+    currency_symbol: 'MK',
+    currency_code: 'MWK',
+    join_date: '2026-09-01',
+    monthly_due_amount: 5000,
+    has_monthly_dues: 1,
+    has_kingdom_investment: 0,
+    kingdom_investment_amount: 0,
+    status: 'orange',
+    verified: 1,
+    created_at: '2026-09-01',
+  },
+];
 
-const INITIAL_CONTRIBUTIONS: Contribution[] = [];
+const INITIAL_CONTRIBUTIONS: Contribution[] = [
+  {
+    id: 1,
+    receipt_no: 'REC-2026-09101',
+    member_id: 1,
+    amount: 150,
+    currency_symbol: 'R',
+    category: 'membership_fee',
+    for_month: '2026-09',
+    payment_method: 'bank_transfer',
+    notes: 'September 2026 Monthly Dues',
+    date: '2026-09-05',
+    verified: 1,
+    created_at: '2026-09-05',
+  },
+  {
+    id: 2,
+    receipt_no: 'REC-2026-09102',
+    member_id: 2,
+    amount: 5000,
+    currency_symbol: 'MK',
+    category: 'membership_fee',
+    for_month: '2026-09',
+    payment_method: 'mobile_money',
+    notes: 'September 2026 Monthly Dues',
+    date: '2026-09-06',
+    verified: 1,
+    created_at: '2026-09-06',
+  },
+  {
+    id: 3,
+    receipt_no: 'REC-2026-09103',
+    member_id: 3,
+    amount: 5000,
+    currency_symbol: 'MK',
+    category: 'membership_fee',
+    for_month: '2026-09',
+    payment_method: 'mobile_money',
+    notes: 'September 2026 Monthly Dues',
+    date: '2026-09-07',
+    verified: 1,
+    created_at: '2026-09-07',
+  },
+  {
+    id: 4,
+    receipt_no: 'REC-2026-09104',
+    member_id: 4,
+    amount: 5000,
+    currency_symbol: 'MK',
+    category: 'membership_fee',
+    for_month: '2026-09',
+    payment_method: 'cash',
+    notes: 'September 2026 Monthly Dues',
+    date: '2026-09-08',
+    verified: 1,
+    created_at: '2026-09-08',
+  },
+];
 
-const INITIAL_EVENTS: ChurchEvent[] = [];
+const INITIAL_EVENTS: ChurchEvent[] = [
+  {
+    id: 1,
+    title: 'NIGHT OF WORSHIP',
+    description: 'An evening of prophetic praise, deep worship, and spiritual renewal for all saints.',
+    category: 'service',
+    start_date: '2026-10-05 18:00',
+    location: 'Main Sanctuary',
+    target_ministry: 'All Members',
+    is_published: 1,
+    created_at: '2026-10-01',
+  },
+  {
+    id: 2,
+    title: 'Living Faith Sunday Celebration Service',
+    description: 'Glorious Sunday morning gathering with communion and the prophetic word of faith.',
+    category: 'service',
+    start_date: '2026-10-04 09:00',
+    location: 'Cathedral Sanctuary',
+    target_ministry: 'General Congregation',
+    is_published: 1,
+    created_at: '2026-10-01',
+  },
+];
 
 const INITIAL_SETTINGS: ChurchSettings = {
   id: 1,
   church_name: 'Living Faith Membership Portal',
   tagline: 'Living Faith International Assemblies • Stewardship & Member Records',
-  logo_url: '',
+  logo_url: '/living-faith-logo.svg',
   address: 'Living Faith Cathedral Campus, Lilongwe, Malawi',
   phone: '+265 99 123 4567',
   email: 'office@livingfaithportal.org',
@@ -124,58 +333,53 @@ class LocalChurchStore {
   constructor() {
     this.db = this.load();
 
-    // 1. Listen for real-time remote updates from the Cloud Database
-    cloudDb.onRemoteDataReceived((remoteData) => {
-      this.mergeRemoteData(remoteData);
-    });
-
     if (typeof window !== 'undefined') {
-      // 2. Validate Firestore connection on boot per Firebase guidelines
+      // 1. Validate Firestore connection on boot per Firebase guidelines
       validateFirestoreConnection().catch(() => {});
 
-      // 3. Real-time Firestore listener: instant live sync across devices (phone, laptop)
+      // 2. Real-time Firestore listener: instant live sync across devices (phone, laptop)
       subscribeToMembersFromFirestore((remoteMembers) => {
         if (Array.isArray(remoteMembers) && remoteMembers.length > 0) {
           this.mergeRemoteData({ members: remoteMembers });
         }
       });
 
-      // 4. Real-time Firestore contributions listener
+      // 3. Real-time Firestore contributions listener
       subscribeToContributionsFromFirestore((remoteContribs) => {
         if (Array.isArray(remoteContribs) && remoteContribs.length > 0) {
           this.mergeRemoteData({ contributions: remoteContribs });
         }
       });
 
-      // 5. Real-time Firestore church settings listener (Logo, Name, Details)
+      // 4. Real-time Firestore church settings listener (Logo, Name, Details)
       subscribeToChurchSettingsFromFirestore((remoteSettings) => {
         if (remoteSettings && remoteSettings.church_name) {
           this.mergeRemoteData({ settings: remoteSettings });
         }
       });
 
-      // 6. Real-time Firestore events listener (Calendar, schedules across all devices)
+      // 5. Real-time Firestore events listener (Calendar, schedules across all devices)
       subscribeToEventsFromFirestore((remoteEvents) => {
-        if (Array.isArray(remoteEvents)) {
+        if (Array.isArray(remoteEvents) && remoteEvents.length > 0) {
           this.mergeRemoteData({ events: remoteEvents });
         }
       });
 
-      // 7. Real-time Firestore branches listener
+      // 6. Real-time Firestore branches listener
       subscribeToBranchesFromFirestore((remoteBranches) => {
         if (Array.isArray(remoteBranches) && remoteBranches.length > 0) {
           this.mergeRemoteData({ branches: remoteBranches });
         }
       });
 
-      // 8. Real-time Firestore notifications listener
+      // 7. Real-time Firestore notifications listener
       subscribeToNotificationsFromFirestore((remoteNotifs) => {
         if (Array.isArray(remoteNotifs) && remoteNotifs.length > 0) {
           this.mergeRemoteData({ notifications: remoteNotifs });
         }
       });
 
-      // 9. Initial pull from Firestore on startup
+      // 8. Initial pull from Firestore on startup
       setTimeout(async () => {
         try {
           const [mList, cList, sData, eList, bList, nList] = await Promise.all([
@@ -187,19 +391,15 @@ class LocalChurchStore {
             getAllNotificationsFromFirestore(),
           ]);
           this.mergeRemoteData({
-            members: mList,
-            contributions: cList,
+            members: mList && mList.length > 0 ? mList : undefined,
+            contributions: cList && cList.length > 0 ? cList : undefined,
             settings: sData || undefined,
-            events: eList,
+            events: eList && eList.length > 0 ? eList : undefined,
             branches: bList && bList.length > 0 ? bList : undefined,
             notifications: nList && nList.length > 0 ? nList : undefined,
           });
         } catch (_) {}
       }, 100);
-
-      setTimeout(() => {
-        cloudDb.pullFromCloud().catch(() => {});
-      }, 200);
     }
   }
 
@@ -226,19 +426,21 @@ class LocalChurchStore {
             ...(parsed.settings || {}),
             church_name: 'Living Faith Membership Portal',
             tagline: 'Living Faith International Assemblies • Stewardship & Member Records',
+            logo_url: parsed.settings?.logo_url || '/living-faith-logo.svg',
           };
+          modified = true;
+        } else if (!parsed.settings.logo_url) {
+          parsed.settings.logo_url = '/living-faith-logo.svg';
           modified = true;
         }
         if (!parsed.branches || parsed.branches.length !== 4 || !parsed.branches.some((b: Branch) => b.name.includes('Lilongwe'))) {
           parsed.branches = INITIAL_BRANCHES;
           modified = true;
         }
-        // Purge any lingering demo seed members
-        if (parsed.members && parsed.members.some((m: Member) => m.member_number === 'LLW-1001' && m.first_name === 'Emmanuel')) {
-          parsed.members = [];
-          parsed.contributions = [];
-          parsed.events = [];
-          parsed.notifications = [];
+        if (!parsed.members || parsed.members.length === 0) {
+          parsed.members = INITIAL_MEMBERS;
+          parsed.contributions = INITIAL_CONTRIBUTIONS;
+          parsed.events = INITIAL_EVENTS;
           modified = true;
         }
         if (modified) {
@@ -335,7 +537,11 @@ class LocalChurchStore {
 
     // 4. Merge settings (logo, contact info, pastor)
     if (remote.settings && remote.settings.church_name) {
-      this.db.settings = { ...this.db.settings, ...remote.settings };
+      this.db.settings = {
+        ...this.db.settings,
+        ...remote.settings,
+        logo_url: remote.settings.logo_url || this.db.settings?.logo_url || '/living-faith-logo.svg',
+      };
       hasChanges = true;
     }
 
@@ -380,20 +586,6 @@ class LocalChurchStore {
         if (Array.isArray(toSave.events)) {
           toSave.events.forEach((ev) => syncEventToFirestore(ev).catch(() => {}));
         }
-        if (toSave.settings) {
-          syncChurchSettingsToFirestore(toSave.settings).catch(() => {});
-        }
-
-        cloudDb.pushToCloud({
-          branches: toSave.branches,
-          members: toSave.members,
-          contributions: toSave.contributions,
-          events: toSave.events,
-          notifications: toSave.notifications,
-          settings: toSave.settings,
-        }).catch((err) => {
-          console.warn('Background Cloud push warning:', err);
-        });
       }
     } catch (e) {
       console.warn('Failed to persist local store to localStorage:', e);
@@ -515,6 +707,7 @@ class LocalChurchStore {
     this.db.settings = {
       ...this.db.settings,
       ...payload,
+      logo_url: payload.logo_url || this.db.settings?.logo_url || '/living-faith-logo.svg',
       updated_at: new Date().toISOString(),
     };
     this.save();
@@ -1125,46 +1318,55 @@ class LocalChurchStore {
     return { success: true, notification: newNotif };
   }
 
-  // --- CLOUD DATABASE SYNC CONTROLS ---
+  // --- FIRESTORE CLOUD DATABASE SYNC ---
   public async syncWithCloud(): Promise<boolean> {
-    const payload = await cloudDb.pullFromCloud();
-    if (payload) {
-      this.mergeRemoteData(payload);
+    try {
+      const [mList, cList, sData, eList, bList, nList] = await Promise.all([
+        getAllMembersFromFirestore(),
+        getAllContributionsFromFirestore(),
+        getChurchSettingsFromFirestore(),
+        getAllEventsFromFirestore(),
+        getAllBranchesFromFirestore(),
+        getAllNotificationsFromFirestore(),
+      ]);
+
+      if (Array.isArray(mList) && mList.length > 0) {
+        this.mergeRemoteData({ members: mList });
+      } else if (this.db.members.length > 0) {
+        this.db.members.forEach((m) => syncMemberToFirestore(m).catch(() => {}));
+      }
+
+      if (Array.isArray(cList) && cList.length > 0) {
+        this.mergeRemoteData({ contributions: cList });
+      }
+
+      if (sData && sData.church_name) {
+        this.mergeRemoteData({ settings: sData });
+      } else if (this.db.settings) {
+        syncChurchSettingsToFirestore(this.db.settings).catch(() => {});
+      }
+
+      if (Array.isArray(eList) && eList.length > 0) {
+        this.mergeRemoteData({ events: eList });
+      } else if (this.db.events.length > 0) {
+        this.db.events.forEach((ev) => syncEventToFirestore(ev).catch(() => {}));
+      }
+
+      if (Array.isArray(bList) && bList.length > 0) {
+        this.mergeRemoteData({ branches: bList });
+      } else if (this.db.branches.length > 0) {
+        this.db.branches.forEach((b) => syncBranchToFirestore(b).catch(() => {}));
+      }
+
+      if (Array.isArray(nList) && nList.length > 0) {
+        this.mergeRemoteData({ notifications: nList });
+      }
+
       return true;
+    } catch (err) {
+      console.warn('Firestore sync notice:', err);
+      return false;
     }
-    // Also push current state up to ensure parity
-    await cloudDb.pushToCloud({
-      branches: this.db.branches,
-      members: this.db.members,
-      contributions: this.db.contributions,
-      events: this.db.events,
-      notifications: this.db.notifications,
-      settings: this.db.settings,
-    });
-    return true;
-  }
-
-  public getCloudDbConfig(): CloudDbConfig {
-    return cloudDb.getConfig();
-  }
-
-  public updateCloudDbConfig(partial: Partial<CloudDbConfig>): CloudDbConfig {
-    const updated = cloudDb.saveConfig(partial);
-    if (updated.syncEnabled) {
-      cloudDb.pushToCloud({
-        branches: this.db.branches,
-        members: this.db.members,
-        contributions: this.db.contributions,
-        events: this.db.events,
-        notifications: this.db.notifications,
-        settings: this.db.settings,
-      }).catch(() => {});
-    }
-    return updated;
-  }
-
-  public async testAirtable(token: string, baseId: string) {
-    return cloudDb.testAirtableConnection(token, baseId);
   }
 }
 

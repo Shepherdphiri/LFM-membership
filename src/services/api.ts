@@ -560,22 +560,10 @@ export async function resetAdminCleanSlate(
   );
 }
 
-// --- CLOUD DATABASE & MULTI-DEVICE SYNC ---
-
-export function getCloudDbConfig() {
-  return localStore.getCloudDbConfig();
-}
-
-export function updateCloudDbConfig(partial: any) {
-  return localStore.updateCloudDbConfig(partial);
-}
+// --- CLOUD DATABASE (FIRESTORE) & MULTI-DEVICE SYNC ---
 
 export async function triggerCloudSync(): Promise<boolean> {
   return localStore.syncWithCloud();
-}
-
-export async function testAirtableConnection(token: string, baseId: string) {
-  return localStore.testAirtable(token, baseId);
 }
 
 

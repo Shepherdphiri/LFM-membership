@@ -198,10 +198,26 @@ export function subscribeToContributionsFromFirestore(onUpdate: (contribs: Contr
 export async function syncChurchSettingsToFirestore(settings: ChurchSettings): Promise<void> {
   if (!settings) return;
   const ref = doc(db, 'settings', 'church');
-  await setDoc(ref, {
+  const payload: any = {
     ...settings,
     updated_at: new Date().toISOString(),
-  }, { merge: true });
+  };
+
+  // Protect church logo: if incoming logo_url is missing or empty, preserve existing or use default
+  if (!payload.logo_url) {
+    try {
+      const snap = await getDoc(ref);
+      if (snap.exists() && snap.data()?.logo_url) {
+        payload.logo_url = snap.data().logo_url;
+      } else {
+        payload.logo_url = '/living-faith-logo.svg';
+      }
+    } catch (_) {
+      payload.logo_url = '/living-faith-logo.svg';
+    }
+  }
+
+  await setDoc(ref, payload, { merge: true });
 }
 
 export async function getChurchSettingsFromFirestore(): Promise<ChurchSettings | null> {
@@ -209,7 +225,11 @@ export async function getChurchSettingsFromFirestore(): Promise<ChurchSettings |
     const ref = doc(db, 'settings', 'church');
     const snap = await getDoc(ref);
     if (snap.exists()) {
-      return snap.data() as ChurchSettings;
+      const data = snap.data() as ChurchSettings;
+      if (!data.logo_url) {
+        data.logo_url = '/living-faith-logo.svg';
+      }
+      return data;
     }
   } catch (err) {
     console.warn('Failed to fetch church settings from Firestore:', err);
@@ -224,7 +244,11 @@ export function subscribeToChurchSettingsFromFirestore(onUpdate: (settings: Chur
       ref,
       (snapshot) => {
         if (snapshot.exists()) {
-          onUpdate(snapshot.data() as ChurchSettings);
+          const data = snapshot.data() as ChurchSettings;
+          if (!data.logo_url) {
+            data.logo_url = '/living-faith-logo.svg';
+          }
+          onUpdate(data);
         }
       },
       (error) => {

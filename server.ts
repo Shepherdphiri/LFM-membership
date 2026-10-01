@@ -82,119 +82,8 @@ app.get('/api/church-settings', async (req, res) => {
 });
 
 // ==========================================
-// CLOUD VAULT SERVER SYNCHRONIZATION
+// LOCAL SQLITE DATABASE OPERATIONS
 // ==========================================
-const GLOBAL_VAULT_URL = 'https://api.restful-api.dev/objects/ff808181a09d98f701a0f0e7763347c7';
-
-async function pushServerToCloudVault() {
-  try {
-    const branches = await queryAll<Branch>(`SELECT * FROM branches ORDER BY id ASC`);
-    const members = await queryAll<any>(`
-      SELECT m.*, b.name as branch_name, b.code as branch_code, b.currency_symbol, b.currency_code
-      FROM members m
-      JOIN branches b ON m.branch_id = b.id
-      ORDER BY m.id ASC
-    `);
-
-    const dataObj: Record<string, any> = {
-      updatedAt: new Date().toISOString(),
-    };
-
-    for (const m of members) {
-      if (!m || !m.member_number) continue;
-      const key = 'm_' + m.member_number.replace(/[^a-zA-Z0-9]/g, '_');
-      dataObj[key] = JSON.stringify({
-        id: m.id,
-        member_number: m.member_number,
-        title: m.title || 'Brother',
-        first_name: m.first_name || '',
-        surname: m.surname || '',
-        full_name: m.full_name || `${m.first_name || ''} ${m.surname || ''}`.trim(),
-        phone: m.phone || '',
-        email: m.email || '',
-        photo_url: '',
-        branch_id: m.branch_id || 1,
-        branch_name: m.branch_name || 'Main Sanctuary',
-        branch_code: m.branch_code || 'MS',
-        currency_symbol: m.currency_symbol || '$',
-        currency_code: m.currency_code || 'USD',
-        join_date: m.join_date || '2026-09-30',
-        monthly_due_amount: m.monthly_due_amount || 20,
-        has_monthly_dues: 1,
-        has_kingdom_investment: m.has_kingdom_investment || 0,
-        kingdom_investment_amount: m.kingdom_investment_amount || 0,
-        status: m.status || 'orange',
-      });
-    }
-
-    await fetch(GLOBAL_VAULT_URL, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        name: 'living-faith-portal-global-db',
-        data: dataObj,
-      }),
-    });
-  } catch (err) {
-    console.warn('Server push to Cloud Vault notice:', err);
-  }
-}
-
-async function pullCloudVaultToServer() {
-  try {
-    const res = await fetch(GLOBAL_VAULT_URL, {
-      headers: { Accept: 'application/json' },
-    });
-    if (!res.ok) return;
-    const json: any = await res.json();
-    const data = json?.data;
-    if (!data) return;
-
-    const members: any[] = [];
-    for (const [key, val] of Object.entries(data)) {
-      if (key.startsWith('m_') && typeof val === 'string') {
-        try {
-          members.push(JSON.parse(val));
-        } catch {}
-      } else if (key === 'members' && Array.isArray(val)) {
-        members.push(...val);
-      }
-    }
-
-    for (const m of members) {
-      if (!m.member_number) continue;
-      const cleanNum = m.member_number.trim().toUpperCase();
-      const exists = await queryOne(`SELECT id FROM members WHERE UPPER(member_number) = ?`, [cleanNum]);
-      if (!exists) {
-        await runExec(
-          `INSERT INTO members (
-            member_number, title, first_name, surname, full_name, phone, email, photo_url,
-            branch_id, join_date, monthly_due_amount, has_monthly_dues, has_kingdom_investment, kingdom_investment_amount, status
-          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-          [
-            cleanNum,
-            m.title || 'Brother',
-            m.first_name || '',
-            m.surname || '',
-            m.full_name || `${m.first_name || ''} ${m.surname || ''}`.trim(),
-            m.phone || '',
-            m.email || '',
-            m.photo_url || '',
-            m.branch_id || 1,
-            m.join_date || new Date().toISOString().split('T')[0],
-            m.monthly_due_amount || 20,
-            m.has_monthly_dues ? 1 : 0,
-            m.has_kingdom_investment ? 1 : 0,
-            m.kingdom_investment_amount || 0,
-            m.status || 'orange',
-          ]
-        );
-      }
-    }
-  } catch (err) {
-    console.warn('Server pull from Cloud Vault notice:', err);
-  }
-}
 
 // First-time member registration (Title, Name, Surname, Phone number, Church branch, Photo, Commitments)
 app.post('/api/member/register', async (req, res) => {
@@ -262,9 +151,6 @@ app.post('/api/member/register', async (req, res) => {
       ]
     );
 
-    // Push to Cloud Vault immediately so all devices and clients have the new registration
-    pushServerToCloudVault().catch(() => {});
-
     res.json({
       success: true,
       memberNumber,
@@ -289,25 +175,13 @@ app.get('/api/member/lookup/:memberNumber', async (req, res) => {
     }
 
     // Join with branches table to get currency symbol & code
-    let member = await queryOne<any>(
+    const member = await queryOne<any>(
       `SELECT m.*, b.name as branch_name, b.code as branch_code, b.currency_symbol, b.currency_code
        FROM members m
        JOIN branches b ON m.branch_id = b.id
        WHERE UPPER(m.member_number) = ?`,
       [rawNumber]
     );
-
-    // If not found in SQLite, pull from Cloud Vault to see if registered on another device or client
-    if (!member) {
-      await pullCloudVaultToServer();
-      member = await queryOne<any>(
-        `SELECT m.*, b.name as branch_name, b.code as branch_code, b.currency_symbol, b.currency_code
-         FROM members m
-         JOIN branches b ON m.branch_id = b.id
-         WHERE UPPER(m.member_number) = ?`,
-        [rawNumber]
-      );
-    }
 
     if (!member) {
       return res.status(404).json({
@@ -470,8 +344,6 @@ const requireAdmin = (req: express.Request, res: express.Response, next: express
 // Admin overview stats
 app.get('/api/admin/stats', requireAdmin, async (req, res) => {
   try {
-    await pullCloudVaultToServer();
-
     const members = await queryAll<any>(`
       SELECT m.*, b.name as branch_name, b.code as branch_code, b.currency_symbol, b.currency_code
       FROM members m
@@ -655,8 +527,6 @@ app.put('/api/admin/church-settings', requireAdmin, async (req, res) => {
 // Admin Member Directory
 app.get('/api/admin/members', requireAdmin, async (req, res) => {
   try {
-    await pullCloudVaultToServer();
-
     const { search, status, branchId } = req.query;
     let sql = `
       SELECT m.*, b.name as branch_name, b.code as branch_code, b.currency_symbol, b.currency_code
@@ -1093,7 +963,6 @@ async function setupApp() {
 
   app.listen(Number(PORT), '0.0.0.0', () => {
     console.log(`Church Portal running at http://0.0.0.0:${PORT}`);
-    pullCloudVaultToServer().catch(() => {});
   });
 }
 
