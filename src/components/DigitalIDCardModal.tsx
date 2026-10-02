@@ -158,12 +158,15 @@ export const DigitalIDCardModal: React.FC<DigitalIDCardModalProps> = ({
                     <img
                       src={logoUrl}
                       alt={churchName}
+                      onError={(e) => { (e.currentTarget as HTMLImageElement).src = '/living-faith-logo.svg'; }}
                       className="w-10 h-10 rounded-lg object-contain bg-slate-50 border border-slate-200 p-0.5"
                     />
                   ) : (
-                    <div className="w-10 h-10 rounded-lg bg-slate-900 border border-slate-800 flex items-center justify-center text-amber-400 shrink-0">
-                      <Church className="w-5 h-5" />
-                    </div>
+                    <img
+                      src="/living-faith-logo.svg"
+                      alt={churchName}
+                      className="w-10 h-10 rounded-lg object-contain bg-slate-50 border border-slate-200 p-0.5"
+                    />
                   )}
                   <div>
                     <h4 className="font-bold text-sm text-slate-900 font-serif leading-tight">

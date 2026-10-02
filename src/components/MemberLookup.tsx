@@ -268,12 +268,15 @@ export const MemberLookup: React.FC<MemberLookupProps> = ({
             <img
               src={logoUrl}
               alt={churchName}
+              onError={(e) => { (e.currentTarget as HTMLImageElement).src = '/living-faith-logo.svg'; }}
               className="h-16 w-16 object-contain rounded-xl border border-slate-300 bg-white p-1 shadow-sm"
             />
           ) : (
-            <div className="w-14 h-14 rounded-xl bg-slate-900 border border-slate-800 flex items-center justify-center text-amber-400 shadow-sm">
-              <Church className="w-7 h-7" />
-            </div>
+            <img
+              src="/living-faith-logo.svg"
+              alt={churchName}
+              className="h-16 w-16 object-contain rounded-xl border border-slate-300 bg-white p-1 shadow-sm"
+            />
           )}
         </div>
 

@@ -1,6 +1,8 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { MemberDashboardData, ChurchSettings } from './types';
 import { lookupMember, fetchChurchSettings, triggerCloudSync } from './services/api';
+import { localStore } from './services/localStore';
+import { subscribeToChurchSettingsFromFirestore } from './services/firebase';
 import { Header } from './components/Header';
 import { MemberLookup } from './components/MemberLookup';
 import { MemberDashboard } from './components/MemberDashboard';
@@ -13,7 +15,7 @@ export default function App() {
     return localStorage.getItem('grace_current_member_id') || null;
   });
 
-  const [churchSettings, setChurchSettings] = useState<ChurchSettings | null>(null);
+  const [churchSettings, setChurchSettings] = useState<ChurchSettings | null>(() => localStore.getChurchSettings());
   const [dashboardData, setDashboardData] = useState<MemberDashboardData | null>(null);
   const [loading, setLoading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
@@ -34,6 +36,13 @@ export default function App() {
   useEffect(() => {
     loadChurchSettings();
     triggerCloudSync().catch(() => {});
+
+    const unsubscribe = subscribeToChurchSettingsFromFirestore((remote) => {
+      if (remote && remote.church_name) {
+        setChurchSettings(remote);
+      }
+    });
+    return () => unsubscribe();
   }, [loadChurchSettings]);
 
   // Fetch member profile by unique ID
@@ -142,6 +151,7 @@ export default function App() {
         ) : dashboardData ? (
           <MemberDashboard
             data={dashboardData}
+            churchSettings={churchSettings || undefined}
             onRefresh={handleRefresh}
             onSwitchMember={handleSwitchMember}
             onOpenNotifications={() => setIsNotificationsOpen(true)}

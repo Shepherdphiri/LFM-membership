@@ -26,7 +26,8 @@ const __dirname = path.dirname(__filename);
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-app.use(express.json());
+app.use(express.json({ limit: '25mb' }));
+app.use(express.urlencoded({ extended: true, limit: '25mb' }));
 
 // Initialize SQLite database on startup
 getDb().catch((err) => {
@@ -66,13 +67,16 @@ app.get('/api/church-settings', async (req, res) => {
         id: 1,
         church_name: 'Living Faith Membership Portal',
         tagline: 'Living Faith International Assemblies • Stewardship & Member Records',
-        logo_url: '',
+        logo_url: '/living-faith-logo.svg',
         address: 'Living Faith Cathedral Campus, Lilongwe, Malawi',
         phone: '+265 99 123 4567',
         email: 'office@livingfaithportal.org',
         senior_pastor: 'Senior Pastor',
         tax_id: '',
       });
+    }
+    if (!settings.logo_url) {
+      settings.logo_url = '/living-faith-logo.svg';
     }
     res.json(settings);
   } catch (err) {
@@ -524,6 +528,28 @@ app.put('/api/admin/church-settings', requireAdmin, async (req, res) => {
   }
 });
 
+// Dedicated logo upload and update endpoint
+app.put('/api/admin/church-logo', requireAdmin, async (req, res) => {
+  try {
+    const { logo_url } = req.body;
+    if (!logo_url) {
+      return res.status(400).json({ error: 'Logo data or URL is required.' });
+    }
+
+    const cleanLogo = logo_url.trim();
+    await runExec(
+      `UPDATE church_settings SET logo_url = ?, updated_at = CURRENT_TIMESTAMP WHERE id = 1`,
+      [cleanLogo]
+    );
+
+    const updated = await queryOne<ChurchSettings>(`SELECT * FROM church_settings WHERE id = 1`);
+    res.json({ success: true, settings: updated, logo_url: cleanLogo, message: 'Church logo updated and synced successfully.' });
+  } catch (err) {
+    console.error('Error updating church logo:', err);
+    res.status(500).json({ error: 'Failed to update church logo' });
+  }
+});
+
 // Admin Member Directory
 app.get('/api/admin/members', requireAdmin, async (req, res) => {
   try {
@@ -767,9 +793,18 @@ app.get('/api/admin/events', requireAdmin, async (req, res) => {
 
 app.post('/api/admin/events', requireAdmin, async (req, res) => {
   try {
-    const { title, description, category, start_date, end_date, location, target_ministry } = req.body;
+    const { id, title, description, category, start_date, end_date, location, target_ministry } = req.body;
     if (!title || !start_date || !location) {
       return res.status(400).json({ error: 'Title, start date, and location are required.' });
+    }
+
+    if (id) {
+      await runExec(
+        `INSERT OR REPLACE INTO events (id, title, description, category, start_date, end_date, location, target_ministry, is_published)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1)`,
+        [id, title.trim(), description || '', category || 'service', start_date, end_date || null, location.trim(), target_ministry || 'General Congregation']
+      );
+      return res.json({ success: true, eventId: id });
     }
 
     const result = await runExec(

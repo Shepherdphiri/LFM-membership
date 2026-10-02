@@ -43,13 +43,15 @@ export const Header: React.FC<HeaderProps> = ({
                 <img
                   src={logoUrl}
                   alt={churchName}
-                  onError={(e) => { (e.currentTarget as HTMLElement).style.display = 'none'; }}
+                  onError={(e) => { (e.currentTarget as HTMLImageElement).src = '/living-faith-logo.svg'; }}
                   className="w-10 h-10 rounded-lg object-contain bg-slate-800 border border-slate-700 p-0.5"
                 />
               ) : (
-                <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-amber-600 via-amber-700 to-amber-800 border border-amber-500/40 flex items-center justify-center text-white shadow-xs">
-                  <Church className="w-5 h-5 text-amber-100" />
-                </div>
+                <img
+                  src="/living-faith-logo.svg"
+                  alt={churchName}
+                  className="w-10 h-10 rounded-lg object-contain bg-slate-800 border border-slate-700 p-0.5"
+                />
               )}
               <div className="hidden xs:block">
                 <h1 className="font-bold text-base text-white font-serif tracking-tight leading-tight">

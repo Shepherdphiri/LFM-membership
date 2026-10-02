@@ -24,9 +24,11 @@ import { generateMemberStatementPDF } from '../utils/pdfGenerator';
 import { generateQRCodeDataURL } from '../utils/qrcode';
 import { ReceiptModal } from './ReceiptModal';
 import { DigitalIDCardModal } from './DigitalIDCardModal';
+import { ChurchSettings } from '../types';
 
 interface MemberDashboardProps {
   data: MemberDashboardData;
+  churchSettings?: ChurchSettings;
   onRefresh: () => void;
   onSwitchMember: () => void;
   onOpenNotifications: () => void;
@@ -34,11 +36,14 @@ interface MemberDashboardProps {
 
 export const MemberDashboard: React.FC<MemberDashboardProps> = ({
   data,
+  churchSettings,
   onRefresh,
   onSwitchMember,
   onOpenNotifications,
 }) => {
   const { member, status, statusReason, currencySymbol, summary, contributions, upcomingEvents, notifications, settings, paidMonths } = data;
+
+  const activeSettings = churchSettings || settings;
 
   const [activeTab, setActiveTab] = useState<'contributions' | 'events'>('contributions');
   const [selectedContribution, setSelectedContribution] = useState<Contribution | null>(null);
@@ -46,7 +51,7 @@ export const MemberDashboard: React.FC<MemberDashboardProps> = ({
   const [qrDataUrl, setQrDataUrl] = useState<string>('');
   const [isDigitalIdOpen, setIsDigitalIdOpen] = useState<boolean>(false);
 
-  const churchName = settings?.church_name || 'Living Faith Membership Portal';
+  const churchName = activeSettings?.church_name || 'Living Faith Membership Portal';
 
   // Generate scannable QR Code for the member's unique ID
   useEffect(() => {
@@ -64,7 +69,7 @@ export const MemberDashboard: React.FC<MemberDashboardProps> = ({
   };
 
   const handleExportPDF = () => {
-    generateMemberStatementPDF(member, contributions, summary, 'September 2026', settings, qrDataUrl);
+    generateMemberStatementPDF(member, contributions, summary, 'September 2026', activeSettings, qrDataUrl);
   };
 
   const unreadCount = notifications.filter((n) => !n.is_read).length;
@@ -501,7 +506,7 @@ export const MemberDashboard: React.FC<MemberDashboardProps> = ({
       <ReceiptModal
         contribution={selectedContribution}
         member={member}
-        churchSettings={settings}
+        churchSettings={activeSettings}
         onClose={() => setSelectedContribution(null)}
       />
 
@@ -510,7 +515,7 @@ export const MemberDashboard: React.FC<MemberDashboardProps> = ({
         isOpen={isDigitalIdOpen}
         onClose={() => setIsDigitalIdOpen(false)}
         member={member}
-        churchSettings={settings}
+        churchSettings={activeSettings}
         qrDataUrl={qrDataUrl}
       />
     </div>

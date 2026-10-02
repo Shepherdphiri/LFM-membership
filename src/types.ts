@@ -34,6 +34,7 @@ export interface Member {
   kingdom_investment_amount?: number;
   status: TrafficLightStatus;
   notes?: string;
+  verified?: number;
   created_at: string;
 }
 
@@ -42,6 +43,8 @@ export interface Contribution {
   member_id: number;
   category: 'membership_fee' | 'kingdom_investment' | 'special_offering';
   amount: number;
+  currency_symbol?: string;
+  currency_code?: string;
   date: string;
   for_month?: string; // YYYY-MM
   payment_method: string;

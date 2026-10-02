@@ -17,6 +17,10 @@ service cloud.firestore {
     }
 
     // Church profile settings & branding
+    match /church_settings/{settingId} {
+      allow read, write: if true;
+    }
+
     match /settings/{settingId} {
       allow read, write: if true;
     }
@@ -33,6 +37,11 @@ service cloud.firestore {
 
     // Test connection doc
     match /test/{docId} {
+      allow read, write: if true;
+    }
+
+    // Fallback for all church documents
+    match /{document=**} {
       allow read, write: if true;
     }
   }

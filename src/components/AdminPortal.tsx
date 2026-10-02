@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import {
   AdminStats,
   AdminMemberListItem,
@@ -23,6 +23,7 @@ import {
   broadcastAdminNotification,
   fetchAdminChurchSettings,
   updateAdminChurchSettings,
+  updateAdminChurchLogo,
   resetAdminCleanSlate,
   deleteAdminMember,
   markAdminMemberVoid,
@@ -71,6 +72,7 @@ import {
   getAllMembersFromFirestore,
   getAllEventsFromFirestore,
   getChurchSettingsFromFirestore,
+  subscribeToChurchSettingsFromFirestore,
 } from '../services/firebase';
 import { generateMemberStatementPDF } from '../utils/pdfGenerator';
 import { playGentleChime } from '../utils/notifications';
@@ -113,46 +115,111 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ isOpen, onClose, onSet
   const [loginLoading, setLoginLoading] = useState(false);
   const [loginError, setLoginError] = useState<string | null>(null);
 
-  // Admin Dashboard state
-  const [activeTab, setActiveTab] = useState<'overview' | 'settings' | 'branches' | 'members' | 'events' | 'reports' | 'broadcast' | 'database'>('overview');
-  const [stats, setStats] = useState<AdminStats | null>(null);
-  const [branches, setBranches] = useState<Branch[]>([]);
-  const [members, setMembers] = useState<AdminMemberListItem[]>([]);
+  // Admin Dashboard state (Clean 7 tools, no database selector clutter)
+  const [activeTab, setActiveTab] = useState<'overview' | 'settings' | 'branches' | 'members' | 'events' | 'reports' | 'broadcast'>('overview');
+  const [stats, setStats] = useState<AdminStats>(() => localStore.getAdminStats());
+  const [branches, setBranches] = useState<Branch[]>(() => localStore.getBranches());
+  const [members, setMembers] = useState<AdminMemberListItem[]>(() => localStore.getAdminMembers());
   const [loading, setLoading] = useState(false);
   const [refreshTrigger, setRefreshTrigger] = useState(0);
 
-  // Cloud Database (Google Cloud Firestore) State
+  // Cloud Synchronization State
   const [isSyncingNow, setIsSyncingNow] = useState(false);
   const [cloudToast, setCloudToast] = useState<string | null>(null);
   const [lastSyncTime, setLastSyncTime] = useState<string>('Live via Google Cloud Firestore');
 
-  // Church Settings & Logo State (Tax ID removed)
-  const [churchNameInput, setChurchNameInput] = useState('Living Faith Membership Portal');
-  const [churchTaglineInput, setChurchTaglineInput] = useState('Living Faith International Assemblies • Stewardship & Member Records');
-  const [churchLogoInput, setChurchLogoInput] = useState('');
-  const [churchAddressInput, setChurchAddressInput] = useState('Living Faith Cathedral Campus, Lilongwe, Malawi');
-  const [churchPhoneInput, setChurchPhoneInput] = useState('+265 99 123 4567');
-  const [churchEmailInput, setChurchEmailInput] = useState('office@livingfaithportal.org');
-  const [churchPastorInput, setChurchPastorInput] = useState('Senior Pastor');
+  // Church Settings & Logo State
+  const initialSettings = localStore.getChurchSettings();
+  const [churchNameInput, setChurchNameInput] = useState(initialSettings.church_name || 'Living Faith Membership Portal');
+  const [churchTaglineInput, setChurchTaglineInput] = useState(initialSettings.tagline || 'Living Faith International Assemblies • Stewardship & Member Records');
+  const [churchLogoInput, setChurchLogoInput] = useState(initialSettings.logo_url || '/living-faith-logo.svg');
+  const [churchAddressInput, setChurchAddressInput] = useState(initialSettings.address || 'Living Faith Cathedral Campus, Lilongwe, Malawi');
+  const [churchPhoneInput, setChurchPhoneInput] = useState(initialSettings.phone || '+265 99 123 4567');
+  const [churchEmailInput, setChurchEmailInput] = useState(initialSettings.email || 'office@livingfaithportal.org');
+  const [churchPastorInput, setChurchPastorInput] = useState(initialSettings.senior_pastor || 'Senior Pastor');
   const [settingsSaving, setSettingsSaving] = useState(false);
   const [settingsToast, setSettingsToast] = useState<string | null>(null);
   const logoFileInputRef = useRef<HTMLInputElement>(null);
+
+  // Always-active computed stats so Overview data is NEVER gone or blank
+  const currentStats = useMemo<AdminStats>(() => {
+    const local = localStore.getAdminStats();
+    const sourceMembers = members.length > 0 ? members : localStore.getAdminMembers();
+    const sourceBranches = branches.length > 0 ? branches : localStore.getBranches();
+
+    const greenCount = sourceMembers.filter((m) => m.status === 'green').length;
+    const orangeCount = sourceMembers.filter((m) => m.status === 'orange').length;
+    const redCount = sourceMembers.filter((m) => m.status === 'red').length;
+
+    const recent = (stats?.recentContributions && stats.recentContributions.length > 0)
+      ? stats.recentContributions
+      : (local.recentContributions && local.recentContributions.length > 0)
+      ? local.recentContributions
+      : [];
+
+    return {
+      membersCount: sourceMembers.length,
+      greenCount: stats && stats.membersCount > 0 ? stats.greenCount : greenCount,
+      orangeCount: stats && stats.membersCount > 0 ? stats.orangeCount : orangeCount,
+      redCount: stats && stats.membersCount > 0 ? stats.redCount : redCount,
+      branchesCount: sourceBranches.length,
+      branches: sourceBranches,
+      overdueMembers: sourceMembers.filter((m) => m.status !== 'green'),
+      recentContributions: recent,
+    };
+  }, [stats, members, branches]);
+
+  const [logoSyncing, setLogoSyncing] = useState(false);
+
+  const handleUploadAndSyncLogoNow = async (specificLogo?: string) => {
+    const targetLogo = specificLogo || churchLogoInput;
+    if (!token || !targetLogo) return;
+
+    setLogoSyncing(true);
+    try {
+      const res = await updateAdminChurchLogo(token, targetLogo);
+      setChurchLogoInput(targetLogo);
+      setSettingsToast(res.message);
+      setCloudToast('Church logo uploaded and synchronized across all connected devices in real time.');
+      if (onSettingsUpdated) onSettingsUpdated();
+      playGentleChime();
+      setTimeout(() => setSettingsToast(null), 3500);
+      setTimeout(() => setCloudToast(null), 3500);
+    } catch (err: any) {
+      alert(err.message || 'Failed to sync logo across devices');
+    } finally {
+      setLogoSyncing(false);
+    }
+  };
 
   const handleLogoFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
     if (!file.type.startsWith('image/')) {
-      alert('Please upload an image file (PNG, JPG, WEBP).');
+      alert('Please upload an image file (PNG, JPG, WEBP, or SVG).');
+      return;
+    }
+
+    if (file.type === 'image/svg+xml') {
+      const reader = new FileReader();
+      reader.onload = async (event) => {
+        const dataUrl = event.target?.result as string;
+        setChurchLogoInput(dataUrl);
+        if (token) {
+          await handleUploadAndSyncLogoNow(dataUrl);
+        }
+      };
+      reader.readAsDataURL(file);
       return;
     }
 
     const reader = new FileReader();
     reader.onload = (event) => {
       const img = new Image();
-      img.onload = () => {
+      img.onload = async () => {
         const canvas = document.createElement('canvas');
-        const MAX_SIZE = 400;
+        const MAX_SIZE = 512;
         let width = img.width;
         let height = img.height;
 
@@ -168,22 +235,43 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ isOpen, onClose, onSet
           }
         }
 
-        canvas.width = width;
-        canvas.height = height;
+        canvas.width = Math.round(width);
+        canvas.height = Math.round(height);
         const ctx = canvas.getContext('2d');
-        ctx?.drawImage(img, 0, 0, width, height);
-        const dataUrl = canvas.toDataURL('image/png');
+        if (ctx) {
+          ctx.imageSmoothingEnabled = true;
+          ctx.imageSmoothingQuality = 'high';
+          ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+        }
+
+        let dataUrl: string;
+        try {
+          dataUrl = canvas.toDataURL('image/webp', 0.92);
+          if (!dataUrl.startsWith('data:image/webp')) {
+            dataUrl = canvas.toDataURL('image/png');
+          }
+        } catch (_) {
+          dataUrl = canvas.toDataURL('image/png');
+        }
+
         setChurchLogoInput(dataUrl);
+        if (token) {
+          await handleUploadAndSyncLogoNow(dataUrl);
+        }
       };
       img.src = event.target?.result as string;
     };
     reader.readAsDataURL(file);
   };
 
-  const handleRemoveLogo = () => {
-    setChurchLogoInput('');
+  const handleRemoveLogo = async () => {
+    const defaultLogo = '/living-faith-logo.svg';
+    setChurchLogoInput(defaultLogo);
     if (logoFileInputRef.current) {
       logoFileInputRef.current.value = '';
+    }
+    if (token) {
+      await handleUploadAndSyncLogoNow(defaultLogo);
     }
   };
 
@@ -345,39 +433,43 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ isOpen, onClose, onSet
         const eventsData = eventsRes.status === 'fulfilled' ? eventsRes.value : [];
         const churchData = churchRes.status === 'fulfilled' ? churchRes.value : null;
 
-        if (!statsData && membersData.length > 0) {
-          const greenCount = membersData.filter((m) => m.status === 'green').length;
-          const orangeCount = membersData.filter((m) => m.status === 'orange').length;
-          const redCount = membersData.filter((m) => m.status === 'red').length;
-          statsData = {
-            membersCount: membersData.length,
-            greenCount,
-            orangeCount,
-            redCount,
-            branchesCount: branchesData.length,
-            branches: branchesData,
-            overdueMembers: membersData.filter((m) => m.status !== 'green'),
-            recentContributions: [],
-          };
-        }
+        const finalBranches = branchesData.length > 0 ? branchesData : localStore.getBranches();
+        const finalMembers = membersData.length > 0 ? membersData : localStore.getAdminMembers();
+        const finalEvents = eventsData.length > 0 ? eventsData : localStore.getEvents();
 
-        if (statsData) setStats(statsData);
-        if (branchesData.length > 0) setBranches(branchesData);
-        if (membersData.length > 0) setMembers(membersData);
-        if (eventsData.length > 0) setAdminEvents(eventsData);
+        const greenCount = finalMembers.filter((m) => m.status === 'green').length;
+        const orangeCount = finalMembers.filter((m) => m.status === 'orange').length;
+        const redCount = finalMembers.filter((m) => m.status === 'red').length;
+
+        const computedStats: AdminStats = (statsData && statsData.membersCount > 0)
+          ? statsData
+          : {
+              membersCount: finalMembers.length,
+              greenCount,
+              orangeCount,
+              redCount,
+              branchesCount: finalBranches.length,
+              branches: finalBranches,
+              overdueMembers: finalMembers.filter((m) => m.status !== 'green'),
+              recentContributions: statsData?.recentContributions || localStore.getAdminStats().recentContributions || [],
+            };
+
+        setStats(computedStats);
+        setBranches(finalBranches);
+        setMembers(finalMembers);
+        setAdminEvents(finalEvents);
 
         if (churchData) {
           setChurchNameInput(churchData.church_name || 'Living Faith Membership Portal');
-          setChurchTaglineInput(churchData.tagline || '');
-          if (churchData.logo_url && !churchData.logo_url.includes('example.com')) {
-            setChurchLogoInput(churchData.logo_url);
-          } else {
-            setChurchLogoInput('');
-          }
-          setChurchAddressInput(churchData.address || '');
-          setChurchPhoneInput(churchData.phone || '');
-          setChurchEmailInput(churchData.email || '');
-          setChurchPastorInput(churchData.senior_pastor || '');
+          setChurchTaglineInput(churchData.tagline || 'Living Faith International Assemblies • Stewardship & Member Records');
+          const validLogo = churchData.logo_url && !churchData.logo_url.includes('example.com')
+            ? churchData.logo_url
+            : '/living-faith-logo.svg';
+          setChurchLogoInput(validLogo);
+          setChurchAddressInput(churchData.address || 'Living Faith Cathedral Campus, Lilongwe, Malawi');
+          setChurchPhoneInput(churchData.phone || '+265 99 123 4567');
+          setChurchEmailInput(churchData.email || 'office@livingfaithportal.org');
+          setChurchPastorInput(churchData.senior_pastor || 'Senior Pastor');
         }
       })
       .catch((err) => {
@@ -399,6 +491,22 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ isOpen, onClose, onSet
     };
     window.addEventListener('church_store_updated', onStoreUpdated);
     return () => window.removeEventListener('church_store_updated', onStoreUpdated);
+  }, []);
+
+  // Real-time Firestore subscription to church settings & logo across all devices
+  useEffect(() => {
+    const unsubscribe = subscribeToChurchSettingsFromFirestore((remote) => {
+      if (remote && remote.church_name) {
+        setChurchNameInput(remote.church_name);
+        if (remote.tagline) setChurchTaglineInput(remote.tagline);
+        if (remote.logo_url) setChurchLogoInput(remote.logo_url);
+        if (remote.address) setChurchAddressInput(remote.address);
+        if (remote.phone) setChurchPhoneInput(remote.phone);
+        if (remote.email) setChurchEmailInput(remote.email);
+        if (remote.senior_pastor) setChurchPastorInput(remote.senior_pastor);
+      }
+    });
+    return () => unsubscribe();
   }, []);
 
   const handleManualSync = async () => {
@@ -756,14 +864,25 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ isOpen, onClose, onSet
         {/* Top Header */}
         <div className="bg-slate-900 border-b border-slate-800 p-3.5 sm:px-6 flex items-center justify-between gap-3 shrink-0 text-white">
           <div className="flex items-center gap-3 min-w-0">
-            <div className="w-10 h-10 rounded-xl bg-slate-800 border border-slate-700 flex items-center justify-center text-amber-400 shrink-0">
-              <ShieldCheck className="w-5 h-5" />
-            </div>
+            {churchLogoInput ? (
+              <img
+                src={churchLogoInput}
+                alt="Church Logo"
+                onError={(e) => { (e.currentTarget as HTMLImageElement).src = '/living-faith-logo.svg'; }}
+                className="w-10 h-10 rounded-xl object-contain bg-slate-800 border border-slate-700 p-0.5 shrink-0"
+              />
+            ) : (
+              <div className="w-10 h-10 rounded-xl bg-slate-800 border border-slate-700 flex items-center justify-center text-amber-400 shrink-0">
+                <ShieldCheck className="w-5 h-5" />
+              </div>
+            )}
             <div className="min-w-0">
               <div className="flex items-center gap-2">
-                <h3 className="font-bold text-sm sm:text-base text-white truncate">Church Administration & Records</h3>
+                <h3 className="font-bold text-sm sm:text-base text-white truncate">
+                  {churchNameInput || 'Living Faith Membership Portal'}
+                </h3>
                 <span className="hidden sm:inline-block px-2 py-0.5 rounded bg-amber-500/20 text-amber-300 text-[10px] font-mono font-bold">
-                  ADMIN ONLY
+                  ADMIN
                 </span>
               </div>
               <p className="text-[11px] sm:text-xs text-slate-300 truncate">
@@ -895,9 +1014,9 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ isOpen, onClose, onSet
         ) : (
           /* AUTHENTICATED ADMIN DASHBOARD */
           <div className="flex-1 flex flex-col overflow-hidden bg-slate-50">
-            {/* Admin Tools Navigation - All 8 tools guaranteed fully visible */}
+            {/* Admin Tools Navigation - All 7 tools guaranteed fully visible */}
             <div className="border-b border-slate-200 bg-slate-100/90 p-1.5 sm:p-2 shrink-0">
-              <nav aria-label="Admin Tools" className="grid grid-cols-2 xs:grid-cols-4 sm:grid-cols-4 lg:grid-cols-8 gap-1 sm:gap-1.5 w-full">
+              <nav aria-label="Admin Tools" className="grid grid-cols-2 xs:grid-cols-4 sm:grid-cols-4 lg:grid-cols-7 gap-1 sm:gap-1.5 w-full">
                 {[
                   { id: 'overview', label: 'Overview', icon: ShieldCheck },
                   { id: 'settings', label: 'Profile & Logo', icon: Church },
@@ -906,7 +1025,6 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ isOpen, onClose, onSet
                   { id: 'events', label: 'Events', count: adminEvents.length, icon: Calendar },
                   { id: 'reports', label: 'Reports', icon: FileText },
                   { id: 'broadcast', label: 'Broadcast', icon: Megaphone },
-                  { id: 'database', label: 'Cloud Database', icon: Database },
                 ].map((tab) => {
                   const Icon = tab.icon;
                   const isActive = activeTab === tab.id;
@@ -940,7 +1058,7 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ isOpen, onClose, onSet
               </nav>
             </div>
 
-            {/* Live Cross-Device Cloud Sync Banner */}
+            {/* Live Cross-Device Cloud Sync Status Banner */}
             <div className="flex flex-wrap items-center justify-between gap-2 px-3 sm:px-6 py-2 bg-gradient-to-r from-amber-50/90 via-slate-50 to-amber-50/90 border-b border-slate-200 text-xs text-slate-700 shrink-0">
               <div className="flex items-center gap-2 min-w-0">
                 <span className="relative flex h-2.5 w-2.5 shrink-0">
@@ -948,11 +1066,11 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ isOpen, onClose, onSet
                   <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-emerald-500"></span>
                 </span>
                 <span className="font-bold text-slate-900 truncate">
-                  Google Cloud Firestore Real-Time Sync
+                  Live Cloud Synchronization Active
                 </span>
                 <span className="text-slate-400 hidden sm:inline">•</span>
                 <span className="text-slate-600 text-[11px] truncate hidden md:inline">
-                  ai-studio-gracepointchurch-d2080d49-d096-4885-9906-fbe17cf7e62c
+                  Records, logo &amp; events mirrored across all devices
                 </span>
               </div>
 
@@ -964,11 +1082,11 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ isOpen, onClose, onSet
                   type="button"
                   onClick={handleManualSync}
                   disabled={isSyncingNow}
-                  className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-white hover:bg-slate-50 text-amber-900 border border-amber-300 font-bold text-xs shadow-2xs transition disabled:opacity-50"
-                  title="Force instant sync with Google Cloud Firestore"
+                  className="inline-flex items-center gap-1.5 px-3 py-1 rounded-lg bg-white hover:bg-slate-50 text-amber-900 border border-amber-300 font-bold text-xs shadow-2xs transition disabled:opacity-50"
+                  title="Force instant sync with cloud database"
                 >
                   <RefreshCw className={`w-3.5 h-3.5 ${isSyncingNow ? 'animate-spin text-amber-600' : 'text-amber-700'}`} />
-                  <span>{isSyncingNow ? 'Syncing...' : 'Sync Firestore'}</span>
+                  <span>{isSyncingNow ? 'Syncing...' : 'Sync Now'}</span>
                 </button>
               </div>
             </div>
@@ -989,14 +1107,155 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ isOpen, onClose, onSet
             {/* Tab Contents with ample room for scrolling */}
             <div className="flex-1 overflow-y-auto p-4 sm:p-6 lg:p-8 space-y-6 pb-28">
               {/* TAB 1: OVERVIEW */}
-              {activeTab === 'overview' && stats && (
+              {activeTab === 'overview' && (
                 <div className="space-y-6">
+                  {/* Church Identity Header Banner */}
+                  <div className="p-5 sm:p-6 rounded-2xl bg-gradient-to-r from-slate-900 via-slate-800 to-amber-950 text-white shadow-md flex flex-col md:flex-row md:items-center justify-between gap-4">
+                    <div className="flex items-center gap-4 min-w-0">
+                      <div
+                        onClick={() => logoFileInputRef.current?.click()}
+                        className="relative group cursor-pointer shrink-0"
+                        title="Click to upload or update Church Logo across all devices"
+                      >
+                        <img
+                          src={churchLogoInput || '/living-faith-logo.svg'}
+                          alt="Church Official Logo"
+                          onError={(e) => { (e.currentTarget as HTMLImageElement).src = '/living-faith-logo.svg'; }}
+                          className="w-14 h-14 sm:w-16 sm:h-16 rounded-xl object-contain bg-slate-800/90 border border-amber-500/30 p-1 shrink-0 shadow-inner group-hover:ring-2 group-hover:ring-amber-400 transition"
+                        />
+                        <div className="absolute inset-0 bg-slate-950/70 rounded-xl flex flex-col items-center justify-center opacity-0 group-hover:opacity-100 transition text-[9px] font-bold text-amber-300">
+                          <Camera className="w-4 h-4 mb-0.5" />
+                          <span>Change</span>
+                        </div>
+                      </div>
+                      <div className="min-w-0">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <h3 className="font-bold text-lg sm:text-xl font-serif tracking-tight text-white truncate">
+                            {churchNameInput || 'Living Faith Membership Portal'}
+                          </h3>
+                          <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-500/20 text-amber-300 border border-amber-500/40">
+                            Live Sync Active
+                          </span>
+                        </div>
+                        <p className="text-xs text-slate-300 mt-0.5 truncate">
+                          {churchTaglineInput || 'Living Faith International Assemblies • Stewardship & Member Records'}
+                        </p>
+                        <div className="flex items-center gap-3 text-[11px] text-slate-400 mt-1.5 flex-wrap">
+                          <span className="flex items-center gap-1">
+                            <MapPin className="w-3.5 h-3.5 text-amber-400" />
+                            {churchAddressInput || 'Cathedral Campus, Lilongwe, Malawi'}
+                          </span>
+                          <span>•</span>
+                          <span className="flex items-center gap-1">
+                            <Users className="w-3.5 h-3.5 text-amber-400" />
+                            Pastor: {churchPastorInput || 'Senior Pastor'}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-2 shrink-0 flex-wrap">
+                      <button
+                        type="button"
+                        onClick={() => logoFileInputRef.current?.click()}
+                        disabled={logoSyncing}
+                        className="px-3 py-2 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs flex items-center gap-1.5 shadow-sm transition disabled:opacity-50"
+                        title="Upload Church Logo from computer or mobile"
+                      >
+                        {logoSyncing ? (
+                          <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                        ) : (
+                          <Upload className="w-3.5 h-3.5" />
+                        )}
+                        <span>{logoSyncing ? 'Syncing...' : 'Upload Logo'}</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setActiveTab('members')}
+                        className="px-3 py-2 rounded-xl bg-white/10 hover:bg-white/20 text-white font-semibold text-xs flex items-center gap-1.5 border border-white/20 transition"
+                      >
+                        <Users className="w-3.5 h-3.5" />
+                        <span>Manage Dues</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setActiveTab('events')}
+                        className="px-3 py-2 rounded-xl bg-white/10 hover:bg-white/20 text-white font-semibold text-xs flex items-center gap-1.5 border border-white/20 transition"
+                      >
+                        <Calendar className="w-3.5 h-3.5 text-amber-300" />
+                        <span>Events</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setActiveTab('settings')}
+                        className="px-3 py-2 rounded-xl bg-white/10 hover:bg-white/20 text-white font-semibold text-xs flex items-center gap-1.5 border border-white/20 transition"
+                      >
+                        <Church className="w-3.5 h-3.5 text-amber-300" />
+                        <span>Profile & Logo</span>
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Stewardship Health & Compliance Ratio */}
+                  <div className="p-5 rounded-2xl bg-white border border-slate-200 shadow-sm space-y-3">
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                      <div>
+                        <h4 className="font-bold text-sm text-slate-900 flex items-center gap-2">
+                          <CheckCheck className="w-4 h-4 text-emerald-600" />
+                          Membership Dues Compliance Rate (September 2026)
+                        </h4>
+                        <p className="text-xs text-slate-500 mt-0.5">
+                          Real-time breakdown of members in good standing versus pending or overdue monthly dues.
+                        </p>
+                      </div>
+                      <div className="flex items-center gap-2 text-xs font-bold text-slate-700 font-mono">
+                        <span className="text-emerald-700">
+                          {Math.round((currentStats.greenCount / Math.max(currentStats.membersCount, 1)) * 100)}% Up To Date
+                        </span>
+                      </div>
+                    </div>
+
+                    {/* Multi-segment Progress Bar */}
+                    <div className="w-full h-3 rounded-full bg-slate-100 overflow-hidden flex">
+                      <div
+                        style={{ width: `${(currentStats.greenCount / Math.max(currentStats.membersCount, 1)) * 100}%` }}
+                        className="h-full bg-emerald-500 transition-all duration-300"
+                        title={`Green (Up to date): ${currentStats.greenCount}`}
+                      />
+                      <div
+                        style={{ width: `${(currentStats.orangeCount / Math.max(currentStats.membersCount, 1)) * 100}%` }}
+                        className="h-full bg-amber-500 transition-all duration-300"
+                        title={`Orange (Pending): ${currentStats.orangeCount}`}
+                      />
+                      <div
+                        style={{ width: `${(currentStats.redCount / Math.max(currentStats.membersCount, 1)) * 100}%` }}
+                        className="h-full bg-rose-500 transition-all duration-300"
+                        title={`Red (Overdue): ${currentStats.redCount}`}
+                      />
+                    </div>
+
+                    <div className="flex flex-wrap items-center justify-between text-xs text-slate-600 pt-1">
+                      <span className="flex items-center gap-1.5 font-medium">
+                        <span className="w-2.5 h-2.5 rounded-full bg-emerald-500"></span>
+                        Green: <strong>{currentStats.greenCount}</strong> members ({Math.round((currentStats.greenCount / Math.max(currentStats.membersCount, 1)) * 100)}%)
+                      </span>
+                      <span className="flex items-center gap-1.5 font-medium">
+                        <span className="w-2.5 h-2.5 rounded-full bg-amber-500"></span>
+                        Orange: <strong>{currentStats.orangeCount}</strong> members ({Math.round((currentStats.orangeCount / Math.max(currentStats.membersCount, 1)) * 100)}%)
+                      </span>
+                      <span className="flex items-center gap-1.5 font-medium">
+                        <span className="w-2.5 h-2.5 rounded-full bg-rose-500"></span>
+                        Red: <strong>{currentStats.redCount}</strong> members ({Math.round((currentStats.redCount / Math.max(currentStats.membersCount, 1)) * 100)}%)
+                      </span>
+                    </div>
+                  </div>
+
                   {/* KPI Cards */}
                   <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 sm:gap-4">
                     <div className="p-5 rounded-2xl bg-white border border-slate-200 shadow-sm">
                       <span className="text-[11px] text-slate-500 uppercase font-bold block">Total Registered</span>
-                      <span className="text-2xl font-bold font-mono text-slate-900 mt-1 block">{stats.membersCount}</span>
-                      <span className="text-[11px] text-slate-500">Across {stats.branchesCount} church branches</span>
+                      <span className="text-2xl font-bold font-mono text-slate-900 mt-1 block">{currentStats.membersCount}</span>
+                      <span className="text-[11px] text-slate-500">Across {currentStats.branchesCount} church branches</span>
                     </div>
 
                     <div className="p-5 rounded-2xl bg-white border border-emerald-200 shadow-sm">
@@ -1004,7 +1263,7 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ isOpen, onClose, onSet
                         <span className="w-2.5 h-2.5 rounded-full bg-emerald-600"></span>
                         Green Light
                       </span>
-                      <span className="text-2xl font-bold font-mono text-emerald-800 mt-1 block">{stats.greenCount}</span>
+                      <span className="text-2xl font-bold font-mono text-emerald-800 mt-1 block">{currentStats.greenCount}</span>
                       <span className="text-[11px] text-slate-500">Up to date on dues</span>
                     </div>
 
@@ -1013,7 +1272,7 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ isOpen, onClose, onSet
                         <span className="w-2.5 h-2.5 rounded-full bg-amber-600"></span>
                         Orange Light
                       </span>
-                      <span className="text-2xl font-bold font-mono text-amber-800 mt-1 block">{stats.orangeCount}</span>
+                      <span className="text-2xl font-bold font-mono text-amber-800 mt-1 block">{currentStats.orangeCount}</span>
                       <span className="text-[11px] text-slate-500">Current dues pending</span>
                     </div>
 
@@ -1022,9 +1281,81 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ isOpen, onClose, onSet
                         <span className="w-2.5 h-2.5 rounded-full bg-rose-600"></span>
                         Red Light
                       </span>
-                      <span className="text-2xl font-bold font-mono text-rose-800 mt-1 block">{stats.redCount}</span>
+                      <span className="text-2xl font-bold font-mono text-rose-800 mt-1 block">{currentStats.redCount}</span>
                       <span className="text-[11px] text-slate-500">2+ months overdue</span>
                     </div>
+                  </div>
+
+                  {/* Recent Stewardship Contributions & Dues Activity */}
+                  <div className="p-6 rounded-2xl bg-white border border-slate-200 shadow-sm space-y-4">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <h4 className="font-bold text-sm text-slate-900 flex items-center gap-2">
+                          <FileText className="w-4 h-4 text-amber-700" />
+                          Recent Stewardship Dues & Contributions Ledger
+                        </h4>
+                        <p className="text-xs text-slate-500 mt-0.5">
+                          Latest member dues receipts mirrored across Google Cloud Firestore and church branches.
+                        </p>
+                      </div>
+                      <button
+                        onClick={() => setActiveTab('reports')}
+                        className="text-xs text-amber-800 hover:text-amber-900 font-bold"
+                      >
+                        View Full Ledger in Reports →
+                      </button>
+                    </div>
+
+                    {currentStats.recentContributions && currentStats.recentContributions.length > 0 ? (
+                      <div className="overflow-x-auto border border-slate-200 rounded-xl">
+                        <table className="w-full text-left text-xs">
+                          <thead className="bg-slate-50 text-slate-700 font-bold uppercase tracking-wider text-[10px] border-b border-slate-200">
+                            <tr>
+                              <th className="p-3">Receipt No</th>
+                              <th className="p-3">Member</th>
+                              <th className="p-3">Category</th>
+                              <th className="p-3">Coverage</th>
+                              <th className="p-3">Amount</th>
+                              <th className="p-3">Method</th>
+                              <th className="p-3">Date</th>
+                              <th className="p-3">Status</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-slate-100 font-medium">
+                            {currentStats.recentContributions.slice(0, 8).map((c) => (
+                              <tr key={c.id} className="hover:bg-slate-50/80 transition">
+                                <td className="p-3 font-mono text-slate-700 font-bold">{c.receipt_no}</td>
+                                <td className="p-3">
+                                  <div className="font-bold text-slate-900">{c.member_name}</div>
+                                  <div className="font-mono text-[10px] text-amber-800">{c.member_number}</div>
+                                </td>
+                                <td className="p-3 text-slate-600 capitalize">
+                                  {c.category === 'membership_fee' ? 'Monthly Dues' : c.category.replace('_', ' ')}
+                                </td>
+                                <td className="p-3 font-mono text-slate-700">{c.for_month || '—'}</td>
+                                <td className="p-3 font-bold font-mono text-slate-900">
+                                  {c.currency_symbol || '$'}{Number(c.amount).toFixed(2)}
+                                </td>
+                                <td className="p-3 text-slate-600 capitalize">
+                                  {c.payment_method?.replace('_', ' ') || 'Cash'}
+                                </td>
+                                <td className="p-3 text-slate-500 font-mono text-[11px]">{c.date}</td>
+                                <td className="p-3">
+                                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-800">
+                                    <CheckCircle className="w-3 h-3 text-emerald-600" />
+                                    Verified
+                                  </span>
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    ) : (
+                      <div className="p-6 rounded-xl bg-slate-50 border border-dashed border-slate-200 text-center text-xs text-slate-500">
+                        No recent contributions recorded. Tick dues on the Members tab to record dues payments.
+                      </div>
+                    )}
                   </div>
 
                   {/* Branches Summary */}
@@ -1062,17 +1393,17 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ isOpen, onClose, onSet
                   </div>
 
                   {/* Overdue Pastoral Attention */}
-                  {stats.overdueMembers.length > 0 && (
+                  {currentStats.overdueMembers.length > 0 && (
                     <div className="p-6 rounded-2xl bg-white border border-rose-200 shadow-sm space-y-4">
                       <div className="flex items-center gap-2">
                         <AlertTriangle className="w-5 h-5 text-rose-600" />
                         <h4 className="font-bold text-sm text-slate-900">
-                          Members Requiring Stewardship Follow-Up ({stats.overdueMembers.length})
+                          Members Requiring Stewardship Follow-Up ({currentStats.overdueMembers.length})
                         </h4>
                       </div>
 
                       <div className="divide-y divide-slate-100 border border-slate-200 rounded-xl overflow-hidden bg-slate-50">
-                        {stats.overdueMembers.map((m) => (
+                        {currentStats.overdueMembers.map((m) => (
                           <div key={m.id} className="p-3.5 flex items-center justify-between gap-3 text-xs bg-white">
                             <div className="flex items-center gap-2.5">
                               <span
@@ -1160,44 +1491,63 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ isOpen, onClose, onSet
                       <input
                         ref={logoFileInputRef}
                         type="file"
-                        accept="image/png, image/jpeg, image/jpg, image/webp"
+                        accept="image/png, image/jpeg, image/jpg, image/webp, image/svg+xml, .png, .jpg, .jpeg, .webp, .svg"
                         onChange={handleLogoFileUpload}
                         className="hidden"
                       />
 
                       {churchLogoInput ? (
-                        <div className="flex items-center gap-4 p-4 bg-slate-50 border border-slate-200 rounded-xl">
-                          <div className="w-16 h-16 rounded-xl bg-white border border-slate-300 p-1 shrink-0 flex items-center justify-center shadow-xs overflow-hidden">
+                        <div className="flex flex-col sm:flex-row sm:items-center gap-4 p-4 bg-slate-50 border border-slate-200 rounded-xl">
+                          <div className="w-20 h-20 rounded-xl bg-white border border-slate-300 p-1.5 shrink-0 flex items-center justify-center shadow-xs overflow-hidden">
                             <img
                               src={churchLogoInput}
-                              alt="Church Logo"
+                              alt="Church Logo Preview"
+                              onError={(e) => { (e.currentTarget as HTMLImageElement).src = '/living-faith-logo.svg'; }}
                               className="w-full h-full object-contain"
                             />
                           </div>
-                          <div className="flex-1 min-w-0">
-                            <div className="text-xs font-bold text-slate-900 flex items-center gap-1.5">
-                              <CheckCircle className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
-                              Official Logo File Attached
+                          <div className="flex-1 min-w-0 space-y-2">
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <span className="text-xs font-bold text-slate-900 flex items-center gap-1.5">
+                                <CheckCircle className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                                Official Church Logo Attached
+                              </span>
+                              <span className="px-2 py-0.5 rounded-full text-[10px] font-mono font-bold bg-emerald-100 text-emerald-800">
+                                Real-Time Cloud Sync
+                              </span>
                             </div>
-                            <p className="text-[11px] text-slate-500 mt-0.5">
-                              Logo is loaded and ready. Click "Save Church Profile" below to apply.
+                            <p className="text-[11px] text-slate-600">
+                              This logo is broadcast live via Google Cloud Firestore to all connected devices, member digital ID cards, official dues receipts, and header displays.
                             </p>
-                            <div className="flex items-center gap-2 mt-2">
+                            <div className="flex flex-wrap items-center gap-2 pt-1">
+                              <button
+                                type="button"
+                                onClick={() => handleUploadAndSyncLogoNow()}
+                                disabled={logoSyncing}
+                                className="px-3 py-1.5 text-xs font-bold text-slate-950 bg-amber-500 hover:bg-amber-400 rounded-lg shadow-xs transition-colors flex items-center gap-1.5 disabled:opacity-50"
+                              >
+                                {logoSyncing ? (
+                                  <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                                ) : (
+                                  <Cloud className="w-3.5 h-3.5 text-slate-950" />
+                                )}
+                                <span>{logoSyncing ? 'Syncing to Devices...' : 'Sync Logo to All Devices Now'}</span>
+                              </button>
                               <button
                                 type="button"
                                 onClick={() => logoFileInputRef.current?.click()}
-                                className="px-2.5 py-1 text-xs font-semibold text-slate-700 bg-white border border-slate-300 rounded-lg hover:bg-slate-100 hover:text-slate-900 transition-colors flex items-center gap-1.5"
+                                className="px-3 py-1.5 text-xs font-semibold text-slate-700 bg-white border border-slate-300 rounded-lg hover:bg-slate-100 hover:text-slate-900 transition-colors flex items-center gap-1.5"
                               >
-                                <Upload className="w-3 h-3" />
+                                <Upload className="w-3 h-3 text-slate-600" />
                                 Change Logo File
                               </button>
                               <button
                                 type="button"
                                 onClick={handleRemoveLogo}
-                                className="px-2.5 py-1 text-xs font-semibold text-rose-700 bg-rose-50 border border-rose-200 rounded-lg hover:bg-rose-100 transition-colors flex items-center gap-1.5"
+                                className="px-3 py-1.5 text-xs font-semibold text-rose-700 bg-rose-50 border border-rose-200 rounded-lg hover:bg-rose-100 transition-colors flex items-center gap-1.5"
                               >
-                                <X className="w-3 h-3" />
-                                Remove
+                                <X className="w-3 h-3 text-rose-600" />
+                                Reset to Default Emblem
                               </button>
                             </div>
                           </div>
@@ -1216,7 +1566,7 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ isOpen, onClose, onSet
                               Upload Church Logo File
                             </div>
                             <p className="text-[11px] text-slate-500 mt-0.5">
-                              Click to choose an image from your computer or phone (PNG, JPG, WEBP)
+                              Click to choose an image from your computer or phone (PNG, JPG, WEBP, SVG)
                             </p>
                           </div>
                         </button>
@@ -1848,231 +2198,6 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ isOpen, onClose, onSet
                       Broadcast Announcement
                     </button>
                   </form>
-                </div>
-              )}
-
-              {/* TAB 8: CLOUD DATABASE & MULTI-DEVICE SYNC */}
-              {activeTab === 'database' && (
-                <div className="space-y-6">
-                  {/* Top Intro */}
-                  <div className="bg-white p-5 sm:p-6 rounded-2xl border border-slate-200 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-4">
-                    <div className="space-y-1">
-                      <div className="flex items-center gap-2">
-                        <Database className="w-5 h-5 text-amber-700" />
-                        <h4 className="font-bold text-base text-slate-900">Google Cloud Firestore Database &amp; Live Sync</h4>
-                        <span className="px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 text-[10px] font-bold">
-                          OFFICIAL GOOGLE CLOUD FIRESTORE
-                        </span>
-                      </div>
-                      <p className="text-xs text-slate-600 max-w-2xl">
-                        Official persistent cloud storage for Living Faith Church. Synchronizes members, event schedules, monthly dues, and church branding in real-time across all mobile phones, laptops, and tablets without third-party dependencies.
-                      </p>
-                    </div>
-
-                    <button
-                      type="button"
-                      onClick={handleManualSync}
-                      disabled={isSyncingNow}
-                      className="inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs shadow-sm transition disabled:opacity-50 shrink-0"
-                    >
-                      <RefreshCw className={`w-4 h-4 ${isSyncingNow ? 'animate-spin' : ''}`} />
-                      <span>{isSyncingNow ? 'Syncing...' : 'Sync Firestore Across Devices'}</span>
-                    </button>
-                  </div>
-
-                  {/* Status Metrics */}
-                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 sm:gap-4">
-                    <div className="p-4 rounded-xl bg-white border border-slate-200 shadow-2xs">
-                      <span className="text-[10px] uppercase font-bold text-slate-500 block">Cloud Database</span>
-                      <span className="text-sm font-bold text-slate-900 mt-1 block truncate">
-                        Google Cloud Firestore
-                      </span>
-                      <span className="text-[10px] text-emerald-700 font-semibold mt-0.5 block flex items-center gap-1">
-                        <CheckCircle className="w-3 h-3 text-emerald-600" /> Firebase SDK Connected
-                      </span>
-                    </div>
-
-                    <div className="p-4 rounded-xl bg-white border border-slate-200 shadow-2xs">
-                      <span className="text-[10px] uppercase font-bold text-slate-500 block">Connection State</span>
-                      <div className="flex items-center gap-1.5 mt-1">
-                        <span className="w-2.5 h-2.5 rounded-full bg-emerald-500"></span>
-                        <span className="text-sm font-bold text-slate-900">
-                          Live &amp; Active
-                        </span>
-                      </div>
-                      <span className="text-[10px] text-slate-500 mt-0.5 block">
-                        Real-time snapshots enabled
-                      </span>
-                    </div>
-
-                    <div className="p-4 rounded-xl bg-white border border-slate-200 shadow-2xs">
-                      <span className="text-[10px] uppercase font-bold text-slate-500 block">Cloud Records</span>
-                      <span className="text-sm font-bold font-mono text-slate-900 mt-1 block">
-                        {members.length} Members • {adminEvents.length} Events
-                      </span>
-                      <span className="text-[10px] text-slate-500 mt-0.5 block">
-                        Available on all devices
-                      </span>
-                    </div>
-
-                    <div className="p-4 rounded-xl bg-white border border-slate-200 shadow-2xs">
-                      <span className="text-[10px] uppercase font-bold text-slate-500 block">Last Verification</span>
-                      <span className="text-sm font-bold font-mono text-slate-900 mt-1 block truncate">
-                        {lastSyncTime}
-                      </span>
-                      <span className="text-[10px] text-emerald-700 font-semibold mt-0.5 block">
-                        Cross-device verified
-                      </span>
-                    </div>
-                  </div>
-
-                  {/* Firestore Collections Overview */}
-                  <div className="bg-white p-5 sm:p-6 rounded-2xl border border-slate-200 shadow-sm space-y-5">
-                    <div>
-                      <h4 className="font-bold text-sm text-slate-900">Active Firestore Collections</h4>
-                      <p className="text-xs text-slate-500 mt-0.5">
-                        These collections are synced in real-time with Google Cloud Firestore database ID: <code className="font-mono text-amber-900 bg-amber-50 px-1.5 py-0.5 rounded border border-amber-200">ai-studio-gracepointchurch-d2080d49-d096-4885-9906-fbe17cf7e62c</code>
-                      </p>
-                    </div>
-
-                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-                      <div className="p-4 rounded-xl bg-slate-50 border border-slate-200 space-y-2">
-                        <div className="flex items-center justify-between">
-                          <span className="font-bold text-xs text-slate-900 flex items-center gap-1.5 font-mono">
-                            <Users className="w-4 h-4 text-amber-700" />
-                            /members
-                          </span>
-                          <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-800">
-                            {members.length} Records
-                          </span>
-                        </div>
-                        <p className="text-[11px] text-slate-600">
-                          Full member profiles, phone numbers, branch affiliations, and monthly dues statuses.
-                        </p>
-                      </div>
-
-                      <div className="p-4 rounded-xl bg-slate-50 border border-slate-200 space-y-2">
-                        <div className="flex items-center justify-between">
-                          <span className="font-bold text-xs text-slate-900 flex items-center gap-1.5 font-mono">
-                            <Calendar className="w-4 h-4 text-amber-700" />
-                            /events
-                          </span>
-                          <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-800">
-                            {adminEvents.length} Events
-                          </span>
-                        </div>
-                        <p className="text-[11px] text-slate-600">
-                          Church service schedule, night of worship, conferences, and conventions appearing across all devices.
-                        </p>
-                      </div>
-
-                      <div className="p-4 rounded-xl bg-slate-50 border border-slate-200 space-y-2">
-                        <div className="flex items-center justify-between">
-                          <span className="font-bold text-xs text-slate-900 flex items-center gap-1.5 font-mono">
-                            <Church className="w-4 h-4 text-amber-700" />
-                            /settings/church
-                          </span>
-                          <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-800">
-                            Synchronized
-                          </span>
-                        </div>
-                        <p className="text-[11px] text-slate-600">
-                          Church emblem/logo, cathedral address, senior pastor credentials, and contact details.
-                        </p>
-                      </div>
-
-                      <div className="p-4 rounded-xl bg-slate-50 border border-slate-200 space-y-2">
-                        <div className="flex items-center justify-between">
-                          <span className="font-bold text-xs text-slate-900 flex items-center gap-1.5 font-mono">
-                            <Building className="w-4 h-4 text-amber-700" />
-                            /branches
-                          </span>
-                          <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-800">
-                            {branches.length} Branches
-                          </span>
-                        </div>
-                        <p className="text-[11px] text-slate-600">
-                          Branch cathedral locations, local currency symbols (MK, R, $), and default monthly dues standards.
-                        </p>
-                      </div>
-
-                      <div className="p-4 rounded-xl bg-slate-50 border border-slate-200 space-y-2">
-                        <div className="flex items-center justify-between">
-                          <span className="font-bold text-xs text-slate-900 flex items-center gap-1.5 font-mono">
-                            <FileText className="w-4 h-4 text-amber-700" />
-                            /contributions
-                          </span>
-                          <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-800">
-                            Real-Time
-                          </span>
-                        </div>
-                        <p className="text-[11px] text-slate-600">
-                          Receipt logs, monthly membership dues payments, and Kingdom Investment giving history.
-                        </p>
-                      </div>
-
-                      <div className="p-4 rounded-xl bg-slate-50 border border-slate-200 space-y-2">
-                        <div className="flex items-center justify-between">
-                          <span className="font-bold text-xs text-slate-900 flex items-center gap-1.5 font-mono">
-                            <Megaphone className="w-4 h-4 text-amber-700" />
-                            /notifications
-                          </span>
-                          <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-800">
-                            Live Broadcast
-                          </span>
-                        </div>
-                        <p className="text-[11px] text-slate-600">
-                          Pastoral announcements and member stewardship notices delivered directly to member portals.
-                        </p>
-                      </div>
-                    </div>
-
-                    <div className="p-4 rounded-xl bg-emerald-50 border border-emerald-200 text-xs text-emerald-900 flex items-center justify-between gap-3">
-                      <div className="flex items-center gap-2">
-                        <CheckCheck className="w-4 h-4 text-emerald-700 shrink-0" />
-                        <span>All third-party services removed. Google Cloud Firestore is your sole, high-speed, persistent database.</span>
-                      </div>
-                      <button
-                        type="button"
-                        onClick={handleManualSync}
-                        disabled={isSyncingNow}
-                        className="px-3.5 py-1.5 rounded-lg bg-emerald-700 hover:bg-emerald-800 text-white font-bold text-xs shrink-0 transition"
-                      >
-                        {isSyncingNow ? 'Refreshing...' : 'Verify Cloud Sync'}
-                      </button>
-                    </div>
-                  </div>
-
-                  {/* Cross-Device Sync Guide Card */}
-                  <div className="bg-amber-50/70 border border-amber-200 p-5 rounded-2xl space-y-3 text-xs text-slate-700">
-                    <div className="flex items-center gap-2 text-amber-950 font-bold text-sm">
-                      <Globe className="w-4.5 h-4.5 text-amber-800" />
-                      <span>How Multi-Device Real-Time Sync Works</span>
-                    </div>
-
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-3 pt-1">
-                      <div className="p-3 bg-white rounded-xl border border-amber-200/80 space-y-1">
-                        <span className="font-bold text-slate-900 block text-xs">1. Believer Registers on Mobile</span>
-                        <p className="text-[11px] text-slate-600">
-                          When a new member fills the registration form on their phone, the portal saves the profile and syncs it immediately to Google Cloud Firestore.
-                        </p>
-                      </div>
-
-                      <div className="p-3 bg-white rounded-xl border border-amber-200/80 space-y-1">
-                        <span className="font-bold text-slate-900 block text-xs">2. Admin Sees Record on Laptop</span>
-                        <p className="text-[11px] text-slate-600">
-                          When church admins log in on their laptop or tablet, Firestore automatically pushes the new registration to their screen in real-time.
-                        </p>
-                      </div>
-
-                      <div className="p-3 bg-white rounded-xl border border-amber-200/80 space-y-1">
-                        <span className="font-bold text-slate-900 block text-xs">3. Dues &amp; Events Mirrored</span>
-                        <p className="text-[11px] text-slate-600">
-                          When an admin creates an event (like Night of Worship) or changes the church logo, changes sync directly to the cloud. Believers see it instantly.
-                        </p>
-                      </div>
-                    </div>
-                  </div>
                 </div>
               )}
             </div>

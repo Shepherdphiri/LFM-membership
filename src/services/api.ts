@@ -15,6 +15,7 @@ import {
   clearAllFirestoreMembers,
   clearAllFirestoreContributions,
   syncChurchSettingsToFirestore,
+  syncChurchLogoToFirestore,
   getChurchSettingsFromFirestore,
   syncEventToFirestore,
   deleteEventFromFirestore,
@@ -133,6 +134,26 @@ export async function lookupMember(memberNumber: string): Promise<MemberDashboar
   try {
     const data = await callApi<MemberDashboardData>(`/member/lookup/${encodeURIComponent(cleanId)}`);
     if (data && data.member) {
+      // Ensure real-time Firestore events and church logo are merged into member dashboard
+      try {
+        const [fsEvents, fsSettings] = await Promise.all([
+          getAllEventsFromFirestore(),
+          getChurchSettingsFromFirestore(),
+        ]);
+        if (Array.isArray(fsEvents) && fsEvents.length > 0) {
+          data.upcomingEvents = fsEvents.filter((e) => e.is_published !== 0);
+          localStore.mergeRemoteData({ events: fsEvents });
+        }
+        if (fsSettings && fsSettings.church_name) {
+          data.settings = {
+            ...data.settings,
+            ...fsSettings,
+            logo_url: fsSettings.logo_url || data.settings?.logo_url || '/living-faith-logo.svg',
+          };
+          localStore.mergeRemoteData({ settings: fsSettings });
+        }
+      } catch (_) {}
+
       localStore.cacheRemoteMemberDashboard(data);
       return data;
     }
@@ -236,16 +257,25 @@ export async function adminLogin(username: string, password: string): Promise<{
 export async function fetchAdminStats(token: string): Promise<AdminStats> {
   try {
     const fsMembers = await getAllMembersFromFirestore();
-    if (fsMembers.length > 0) {
+    if (Array.isArray(fsMembers) && fsMembers.length > 0) {
       localStore.mergeRemoteData({ members: fsMembers });
     }
   } catch (e) {}
 
-  return callApi<AdminStats>(
-    '/admin/stats',
-    { headers: { Authorization: `Bearer ${token}` } },
-    () => localStore.getAdminStats()
-  );
+  try {
+    const serverStats = await callApi<AdminStats>(
+      '/admin/stats',
+      { headers: { Authorization: `Bearer ${token}` } },
+      () => localStore.getAdminStats()
+    );
+    const localStats = localStore.getAdminStats();
+    if (serverStats.membersCount === 0 && localStats.membersCount > 0) {
+      return localStats;
+    }
+    return serverStats;
+  } catch (_) {
+    return localStore.getAdminStats();
+  }
 }
 
 export async function fetchAdminBranches(token: string): Promise<Branch[]> {
@@ -284,7 +314,7 @@ export async function fetchAdminMembers(
 ): Promise<AdminMemberListItem[]> {
   try {
     const fsMembers = await getAllMembersFromFirestore();
-    if (fsMembers.length > 0) {
+    if (Array.isArray(fsMembers) && fsMembers.length > 0) {
       localStore.mergeRemoteData({ members: fsMembers });
     }
   } catch (e) {}
@@ -297,11 +327,20 @@ export async function fetchAdminMembers(
   }
 
   const endpoint = `/admin/members${query.toString() ? `?${query.toString()}` : ''}`;
-  return callApi<AdminMemberListItem[]>(
-    endpoint,
-    { headers: { Authorization: `Bearer ${token}` } },
-    () => localStore.getAdminMembers(params)
-  );
+  try {
+    const serverMembers = await callApi<AdminMemberListItem[]>(
+      endpoint,
+      { headers: { Authorization: `Bearer ${token}` } },
+      () => localStore.getAdminMembers(params)
+    );
+    const localMembers = localStore.getAdminMembers(params);
+    if ((!serverMembers || serverMembers.length === 0) && localMembers.length > 0) {
+      return localMembers;
+    }
+    return serverMembers;
+  } catch (_) {
+    return localStore.getAdminMembers(params);
+  }
 }
 
 export async function deleteAdminMember(
@@ -417,29 +456,35 @@ export async function fetchAdminEvents(token: string): Promise<ChurchEvent[]> {
       return remote;
     }
   } catch (_) {}
-  return callApi<ChurchEvent[]>(
-    '/admin/events',
-    { headers: { Authorization: `Bearer ${token}` } },
-    () => localStore.getEvents()
-  );
+
+  try {
+    const serverEvents = await callApi<ChurchEvent[]>(
+      '/admin/events',
+      { headers: { Authorization: `Bearer ${token}` } },
+      () => localStore.getEvents()
+    );
+    const localEvents = localStore.getEvents();
+    if ((!serverEvents || serverEvents.length === 0) && localEvents.length > 0) {
+      return localEvents;
+    }
+    return serverEvents;
+  } catch (_) {
+    return localStore.getEvents();
+  }
 }
 
 export async function createAdminEvent(token: string, payload: any): Promise<ChurchEvent> {
   const localEv = localStore.createEvent(payload);
   await syncEventToFirestore(localEv).catch(() => {});
   try {
-    const res = await callApi<ChurchEvent>('/admin/events', {
+    await callApi('/admin/events', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
         Authorization: `Bearer ${token}`,
       },
-      body: JSON.stringify(payload),
+      body: JSON.stringify({ ...payload, id: localEv.id }),
     });
-    if (res && res.id) {
-      syncEventToFirestore(res).catch(() => {});
-      return res;
-    }
   } catch (_) {}
   return localEv;
 }
@@ -494,26 +539,38 @@ export async function fetchChurchSettings(): Promise<ChurchSettings> {
   try {
     const remote = await getChurchSettingsFromFirestore();
     if (remote && remote.church_name) {
-      localStore.updateChurchSettings(remote);
-      return remote;
+      const merged: ChurchSettings = {
+        ...remote,
+        logo_url: remote.logo_url || '/living-faith-logo.svg',
+      };
+      localStore.updateChurchSettings(merged);
+      return merged;
     }
   } catch (_) {}
-  return callApi<ChurchSettings>('/church-settings', undefined, () => localStore.getChurchSettings());
+  const local = localStore.getChurchSettings();
+  if (!local.logo_url) {
+    local.logo_url = '/living-faith-logo.svg';
+  }
+  return local;
 }
 
 export async function fetchAdminChurchSettings(token: string): Promise<ChurchSettings> {
   try {
     const remote = await getChurchSettingsFromFirestore();
     if (remote && remote.church_name) {
-      localStore.updateChurchSettings(remote);
-      return remote;
+      const merged: ChurchSettings = {
+        ...remote,
+        logo_url: remote.logo_url || '/living-faith-logo.svg',
+      };
+      localStore.updateChurchSettings(merged);
+      return merged;
     }
   } catch (_) {}
-  return callApi<ChurchSettings>(
-    '/admin/church-settings',
-    { headers: { Authorization: `Bearer ${token}` } },
-    () => localStore.getChurchSettings()
-  );
+  const local = localStore.getChurchSettings();
+  if (!local.logo_url) {
+    local.logo_url = '/living-faith-logo.svg';
+  }
+  return local;
 }
 
 export async function updateAdminChurchSettings(
@@ -521,6 +578,9 @@ export async function updateAdminChurchSettings(
   payload: Partial<ChurchSettings>
 ): Promise<{ success: boolean; settings: ChurchSettings; message: string }> {
   const updated = localStore.updateChurchSettings(payload);
+  if (payload.logo_url) {
+    await syncChurchLogoToFirestore(payload.logo_url).catch(() => {});
+  }
   await syncChurchSettingsToFirestore(updated).catch(() => {});
   try {
     await callApi('/admin/church-settings', {
@@ -529,10 +589,30 @@ export async function updateAdminChurchSettings(
         'Content-Type': 'application/json',
         Authorization: `Bearer ${token}`,
       },
-      body: JSON.stringify(payload),
+      body: JSON.stringify(updated),
     });
   } catch (_) {}
   return { success: true, settings: updated, message: 'Church details & branding updated successfully across all devices.' };
+}
+
+export async function updateAdminChurchLogo(
+  token: string,
+  logoUrl: string
+): Promise<{ success: boolean; settings: ChurchSettings; message: string }> {
+  const updated = localStore.updateChurchSettings({ logo_url: logoUrl });
+  await syncChurchLogoToFirestore(logoUrl).catch(() => {});
+  await syncChurchSettingsToFirestore(updated).catch(() => {});
+  try {
+    await callApi('/admin/church-logo', {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({ logo_url: logoUrl }),
+    });
+  } catch (_) {}
+  return { success: true, settings: updated, message: 'Church logo uploaded and synchronized across all connected devices!' };
 }
 
 export async function resetAdminCleanSlate(

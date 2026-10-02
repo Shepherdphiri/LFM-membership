@@ -198,6 +198,7 @@ export function subscribeToContributionsFromFirestore(onUpdate: (contribs: Contr
 export async function syncChurchSettingsToFirestore(settings: ChurchSettings): Promise<void> {
   if (!settings) return;
   const ref = doc(db, 'settings', 'church');
+  const refMain = doc(db, 'church_settings', 'main');
   const payload: any = {
     ...settings,
     updated_at: new Date().toISOString(),
@@ -217,7 +218,24 @@ export async function syncChurchSettingsToFirestore(settings: ChurchSettings): P
     }
   }
 
-  await setDoc(ref, payload, { merge: true });
+  await Promise.all([
+    setDoc(ref, payload, { merge: true }),
+    setDoc(refMain, payload, { merge: true }),
+  ]);
+}
+
+export async function syncChurchLogoToFirestore(logoUrl: string): Promise<void> {
+  if (!logoUrl) return;
+  const ref = doc(db, 'settings', 'church');
+  const refMain = doc(db, 'church_settings', 'main');
+  const payload = {
+    logo_url: logoUrl,
+    updated_at: new Date().toISOString(),
+  };
+  await Promise.all([
+    setDoc(ref, payload, { merge: true }),
+    setDoc(refMain, payload, { merge: true }),
+  ]);
 }
 
 export async function getChurchSettingsFromFirestore(): Promise<ChurchSettings | null> {
